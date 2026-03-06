@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 authors = [
     { name = "aipartnerup", email = "team@aipartnerup.com" },
 ]
-keywords = ["apcore", "mcp", "openai", "tools", "ai", "agent"]
+keywords = ["apcore", "mcp", "openai", "tools", "ai", "agent", "llm", "server", "bridge", "api", "automation", "middleware", "jwt", "fastapi"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
