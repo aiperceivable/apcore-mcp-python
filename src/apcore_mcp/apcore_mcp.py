@@ -104,7 +104,7 @@ class APCoreMCP:
             logging.getLogger("apcore_mcp").setLevel(getattr(logging, log_level.upper()))
 
         # Resolve backend: str/Path → Registry with discover(), otherwise pass through
-        if isinstance(extensions_dir_or_backend, (str, Path)):
+        if isinstance(extensions_dir_or_backend, str | Path):
             from apcore import Registry
 
             backend: object = Registry(extensions_dir=str(extensions_dir_or_backend))
@@ -153,11 +153,11 @@ class APCoreMCP:
         Returns:
             Tuple of (server, router, tools, init_options, version).
         """
-        from apcore_mcp import __version__
+        from apcore_mcp._version import VERSION
         from apcore_mcp.server.factory import MCPServerFactory
         from apcore_mcp.server.router import ExecutionRouter
 
-        version = self._version or __version__
+        version = self._version or VERSION
 
         factory = MCPServerFactory()
         server = factory.create_server(name=self._name, version=version)
@@ -194,7 +194,9 @@ class APCoreMCP:
         logger.info("Tool Explorer enabled at %s", explorer_prefix)
         return [mount]
 
-    def _build_auth_middleware(self, *, explorer: bool = False, explorer_prefix: str = "/explorer") -> list[tuple[type, dict]] | None:
+    def _build_auth_middleware(
+        self, *, explorer: bool = False, explorer_prefix: str = "/explorer"
+    ) -> list[tuple[type, dict]] | None:
         """Build auth middleware list if authenticator is configured."""
         if self._authenticator is None:
             return None

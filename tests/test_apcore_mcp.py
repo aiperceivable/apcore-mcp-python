@@ -9,7 +9,6 @@ import pytest
 
 from apcore_mcp.apcore_mcp import APCoreMCP
 
-
 # ---------------------------------------------------------------------------
 # Stubs
 # ---------------------------------------------------------------------------
@@ -57,6 +56,7 @@ class StubExecutor:
 # ---------------------------------------------------------------------------
 # Helpers to build common patches for serve/async_serve
 # ---------------------------------------------------------------------------
+
 
 def _make_serve_patches():
     """Return patches for the lazy imports inside APCoreMCP.serve()."""
@@ -118,7 +118,7 @@ class TestAPCoreMCPInit:
 
         mock_registry = StubRegistry()
         with patch("apcore.Registry", return_value=mock_registry) as mock_cls:
-            mcp = APCoreMCP(Path("/tmp/extensions"))
+            APCoreMCP(Path("/tmp/extensions"))
             mock_cls.assert_called_once_with(extensions_dir="/tmp/extensions")
 
     def test_custom_name(self) -> None:

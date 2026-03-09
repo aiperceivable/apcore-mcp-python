@@ -16,7 +16,6 @@ from apcore_mcp.adapters.approval import ElicitationApprovalHandler
 from apcore_mcp.adapters.errors import ErrorMapper
 from apcore_mcp.adapters.id_normalizer import ModuleIDNormalizer
 from apcore_mcp.adapters.schema import SchemaConverter
-from apcore_mcp.apcore_mcp import APCoreMCP
 from apcore_mcp.auth import Authenticator, AuthMiddleware, ClaimMapping, JWTAuthenticator
 from apcore_mcp.constants import ERROR_CODES, MODULE_ID_PATTERN, REGISTRY_EVENTS
 from apcore_mcp.converters.openai import OpenAIConverter
@@ -65,7 +64,19 @@ __all__ = [
     "MCP_ELICIT_KEY",
 ]
 
-__version__ = "0.10.0"
+from apcore_mcp._version import VERSION
+
+__version__ = VERSION
+
+
+def __getattr__(name: str) -> object:
+    if name == "APCoreMCP":
+        from apcore_mcp.apcore_mcp import APCoreMCP
+
+        globals()["APCoreMCP"] = APCoreMCP
+        return APCoreMCP
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 logger = logging.getLogger(__name__)
 
