@@ -54,17 +54,44 @@ class ExecutionRouter:
         executor: An apcore Executor instance (duck-typed -- must expose
             an async ``call_async(module_id, inputs)`` method and
             optionally an async ``stream(module_id, inputs)`` generator).
+        validate_inputs: Validate tool inputs against schemas before execution.
+        output_formatter: Optional callable ``(dict) -> str`` that formats
+            execution results into text for LLM consumption.  When None,
+            results are serialised with ``json.dumps(result, default=str)``.
     """
 
-    def __init__(self, executor: Any, *, validate_inputs: bool = False) -> None:
+    def __init__(
+        self,
+        executor: Any,
+        *,
+        validate_inputs: bool = False,
+        output_formatter: Callable[[dict[str, Any]], str] | None = None,
+    ) -> None:
         self._executor = executor
         self._error_mapper = ErrorMapper()
         self._validate_inputs = validate_inputs
+        self._output_formatter = output_formatter
 
         # Cache whether executor methods accept a context parameter,
         # so we avoid a broad TypeError catch on every call.
         self._call_async_accepts_context = self._check_accepts_context(executor.call_async)
         self._stream_accepts_context = self._check_accepts_context(getattr(executor, "stream", None))
+
+    def _format_result(self, result: Any) -> str:
+        """Format an execution result into text for LLM consumption.
+
+        Uses the configured output_formatter if set, otherwise falls back
+        to ``json.dumps(result, default=str)``.
+
+        The formatter is only applied to dict results. Non-dict results
+        (str, list, etc.) are always serialised with json.dumps.
+        """
+        if self._output_formatter is not None and isinstance(result, dict):
+            try:
+                return self._output_formatter(result)
+            except Exception:
+                logger.debug("output_formatter failed, falling back to json.dumps", exc_info=True)
+        return json.dumps(result, default=str)
 
     @staticmethod
     def _check_accepts_context(method: Any) -> bool:
@@ -232,8 +259,8 @@ class ExecutionRouter:
                 result = await self._executor.call_async(tool_name, arguments, context)
             else:
                 result = await self._executor.call_async(tool_name, arguments)
-            json_output = json.dumps(result, default=str)
-            content: list[dict[str, str]] = [{"type": "text", "text": json_output}]
+            text_output = self._format_result(result)
+            content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
             trace_id = context.trace_id if context is not None else None
             return (content, False, trace_id)
         except Exception as error:
@@ -281,8 +308,8 @@ class ExecutionRouter:
                 accumulated = _deep_merge(accumulated, chunk)
                 chunk_index += 1
 
-            json_output = json.dumps(accumulated, default=str)
-            content: list[dict[str, str]] = [{"type": "text", "text": json_output}]
+            text_output = self._format_result(accumulated)
+            content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
             trace_id = context.trace_id if context is not None else None
             return (content, False, trace_id)
         except Exception as error:

@@ -822,3 +822,110 @@ class TestExecutionRouter:
         assert "retryable" in text
         # Internal message must NOT leak
         assert "cancelled by token" not in text
+
+
+# ---------------------------------------------------------------------------
+# Output Formatter Tests
+# ---------------------------------------------------------------------------
+
+
+class TestOutputFormatter:
+    """Tests for ExecutionRouter output_formatter support."""
+
+    async def test_default_no_formatter_returns_json(self) -> None:
+        """Without formatter, result is json.dumps output."""
+        result_data = {"name": "Alice", "score": 42}
+        executor = StubExecutor(results={"test.module": result_data})
+        router = ExecutionRouter(executor)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        parsed = json.loads(content[0]["text"])
+        assert parsed == result_data
+
+    async def test_custom_formatter_applied_to_dict(self) -> None:
+        """Custom formatter is called for dict results."""
+        result_data = {"name": "Alice", "score": 42}
+        executor = StubExecutor(results={"test.module": result_data})
+
+        def my_formatter(data: dict) -> str:
+            return f"Name: {data['name']}, Score: {data['score']}"
+
+        router = ExecutionRouter(executor, output_formatter=my_formatter)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        assert content[0]["text"] == "Name: Alice, Score: 42"
+
+    async def test_formatter_not_applied_to_non_dict(self) -> None:
+        """Formatter is skipped for non-dict results (e.g. list, string)."""
+        executor = StubExecutor(results={"test.module": [1, 2, 3]})
+        called = []
+
+        def my_formatter(data: dict) -> str:
+            called.append(True)
+            return "should not be called"
+
+        router = ExecutionRouter(executor, output_formatter=my_formatter)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        assert called == []
+        assert json.loads(content[0]["text"]) == [1, 2, 3]
+
+    async def test_formatter_fallback_on_error(self) -> None:
+        """If formatter raises, fall back to json.dumps."""
+        result_data = {"name": "Alice"}
+        executor = StubExecutor(results={"test.module": result_data})
+
+        def bad_formatter(data: dict) -> str:
+            raise ValueError("format error")
+
+        router = ExecutionRouter(executor, output_formatter=bad_formatter)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        # Should fall back to json
+        parsed = json.loads(content[0]["text"])
+        assert parsed == result_data
+
+    async def test_formatter_none_means_json(self) -> None:
+        """Explicitly passing None uses json.dumps."""
+        result_data = {"key": "value"}
+        executor = StubExecutor(results={"test.module": result_data})
+        router = ExecutionRouter(executor, output_formatter=None)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        assert json.loads(content[0]["text"]) == result_data
+
+    async def test_to_markdown_formatter(self) -> None:
+        """to_markdown works as a formatter."""
+        from apcore_toolkit import to_markdown
+
+        result_data = {"name": "Alice", "role": "admin"}
+        executor = StubExecutor(results={"test.module": result_data})
+        router = ExecutionRouter(executor, output_formatter=to_markdown)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is False
+        text = content[0]["text"]
+        assert "**name**" in text
+        assert "Alice" in text
+        assert "**role**" in text
+        assert "admin" in text
+
+    async def test_formatter_not_applied_to_errors(self) -> None:
+        """Errors bypass the formatter entirely."""
+        executor = StubExecutor(error=ModuleNotFoundStubError("test.module"))
+        called = []
+
+        def my_formatter(data: dict) -> str:
+            called.append(True)
+            return "formatted"
+
+        router = ExecutionRouter(executor, output_formatter=my_formatter)
+
+        content, is_error, _ = await router.handle_call("test.module", {})
+        assert is_error is True
+        assert called == []

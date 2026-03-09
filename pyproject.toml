@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apcore-mcp"
-version = "0.9.0"
+version = "0.10.0"
 description = "Automatic MCP Server & OpenAI Tools Bridge for apcore"
 readme = "README.md"
 license = "Apache-2.0"
@@ -26,6 +26,7 @@ classifiers = [
 ]
 dependencies = [
     "apcore>=0.9.0",
+    "apcore-toolkit>=0.1.0",
     "mcp>=1.0.0,<2.0",
     "PyJWT>=2.0",
 ]

@@ -341,7 +341,7 @@ class TestServe:
 
             serve(executor)
 
-            # Router should receive the executor with validate_inputs
-            mock_router_cls.assert_called_once_with(executor, validate_inputs=False)
+            # Router should receive the executor with validate_inputs and output_formatter
+            mock_router_cls.assert_called_once_with(executor, validate_inputs=False, output_formatter=None)
             # Factory should receive the extracted registry
             mock_factory.build_tools.assert_called_once_with(executor.registry, tags=None, prefix=None)

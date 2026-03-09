@@ -16,6 +16,7 @@ from apcore_mcp.adapters.approval import ElicitationApprovalHandler
 from apcore_mcp.adapters.errors import ErrorMapper
 from apcore_mcp.adapters.id_normalizer import ModuleIDNormalizer
 from apcore_mcp.adapters.schema import SchemaConverter
+from apcore_mcp.apcore_mcp import APCoreMCP
 from apcore_mcp.auth import Authenticator, AuthMiddleware, ClaimMapping, JWTAuthenticator
 from apcore_mcp.constants import ERROR_CODES, MODULE_ID_PATTERN, REGISTRY_EVENTS
 from apcore_mcp.converters.openai import OpenAIConverter
@@ -28,6 +29,7 @@ from apcore_mcp.server.transport import MetricsExporter, TransportManager
 
 __all__ = [
     # Public API
+    "APCoreMCP",
     "serve",
     "async_serve",
     "to_openai_tools",
@@ -63,7 +65,7 @@ __all__ = [
     "MCP_ELICIT_KEY",
 ]
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,7 @@ def serve(
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
     approval_handler: object | None = None,
+    output_formatter: Callable | None = None,
 ) -> None:
     """Launch an MCP Server that exposes all apcore modules as tools.
 
@@ -117,6 +120,10 @@ def serve(
             If False, requests proceed without identity (permissive mode).
         exempt_paths: Exact paths that bypass authentication.
         approval_handler: Optional approval handler for runtime approval support.
+        output_formatter: Optional callable ``(dict) -> str`` that formats execution
+            results into text for LLM consumption. When None (default), results
+            are serialised with ``json.dumps``. Use ``apcore_toolkit.to_markdown``
+            for human-readable Markdown output (this is the default in APCoreMCP).
     """
     if not name:
         raise ValueError("name must not be empty")
@@ -147,7 +154,7 @@ def serve(
     factory = MCPServerFactory()
     server = factory.create_server(name=name, version=version)
     tools = factory.build_tools(registry, tags=tags, prefix=prefix)
-    router = ExecutionRouter(executor, validate_inputs=validate_inputs)
+    router = ExecutionRouter(executor, validate_inputs=validate_inputs, output_formatter=output_formatter)
     factory.register_handlers(server, tools, router)
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=version)
@@ -235,6 +242,7 @@ async def async_serve(
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
     approval_handler: object | None = None,
+    output_formatter: Callable | None = None,
 ) -> AsyncIterator[Starlette]:
     """Build an MCP Starlette ASGI app for embedding into a larger service.
 
@@ -270,6 +278,7 @@ async def async_serve(
         require_auth: If True, unauthenticated requests receive 401.
         exempt_paths: Exact paths that bypass authentication.
         approval_handler: Optional approval handler for runtime approval.
+        output_formatter: Optional callable ``(dict) -> str`` for formatting results.
 
     Yields:
         A configured Starlette ASGI application with MCP endpoints.
@@ -303,7 +312,7 @@ async def async_serve(
     factory = MCPServerFactory()
     server = factory.create_server(name=name, version=resolved_version)
     tools = factory.build_tools(registry, tags=tags, prefix=prefix)
-    router = ExecutionRouter(executor, validate_inputs=validate_inputs)
+    router = ExecutionRouter(executor, validate_inputs=validate_inputs, output_formatter=output_formatter)
     factory.register_handlers(server, tools, router)
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=resolved_version)

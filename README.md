@@ -75,7 +75,40 @@ All modules are auto-discovered and exposed as MCP tools. No code needed.
 
 ### Programmatic approach (Python API)
 
-For tighter integration or when you need filtering/OpenAI output:
+The `APCoreMCP` class is the recommended entry point — one object, all capabilities.
+Output is automatically formatted as Markdown for optimal LLM readability:
+
+```python
+from apcore_mcp import APCoreMCP
+
+mcp = APCoreMCP("./extensions")
+
+# Launch as MCP Server (output auto-formatted as Markdown)
+mcp.serve()
+
+# Or with HTTP + Explorer UI
+mcp.serve(transport="streamable-http", port=8000, explorer=True)
+
+# Or export as OpenAI tools
+tools = mcp.to_openai_tools()
+
+# Opt out of Markdown formatting (raw JSON output)
+mcp = APCoreMCP("./extensions", output_formatter=None)
+```
+
+You can also pass an existing `Registry` or `Executor`:
+
+```python
+from apcore import Registry
+from apcore_mcp import APCoreMCP
+
+registry = Registry(extensions_dir="./extensions")
+registry.discover()
+mcp = APCoreMCP(registry, name="my-server", tags=["public"])
+```
+
+<details>
+<summary>Function-based API (still supported)</summary>
 
 ```python
 from apcore import Registry
@@ -84,12 +117,10 @@ from apcore_mcp import serve, to_openai_tools
 registry = Registry(extensions_dir="./extensions")
 registry.discover()
 
-# Launch as MCP Server
 serve(registry)
-
-# Or export as OpenAI tools
 tools = to_openai_tools(registry)
 ```
+</details>
 
 ## Integration with Existing Projects
 
@@ -225,7 +256,46 @@ Exit codes: `0` normal, `1` invalid arguments, `2` startup failure.
 
 ## Python API Reference
 
-### `serve()`
+### `APCoreMCP` (recommended)
+
+The unified entry point — configure once, use everywhere:
+
+```python
+from apcore_mcp import APCoreMCP
+
+mcp = APCoreMCP(
+    "./extensions",              # path, Registry, or Executor
+    name="apcore-mcp",          # server name
+    version=None,                # defaults to package version
+    tags=None,                   # filter modules by tags
+    prefix=None,                 # filter modules by ID prefix
+    log_level=None,              # logging level ("DEBUG", "INFO", etc.)
+    validate_inputs=False,       # validate inputs against schemas
+    metrics_collector=None,      # MetricsExporter for /metrics endpoint
+    authenticator=None,          # Authenticator for JWT/token auth (HTTP only)
+    require_auth=True,           # False = permissive mode (no 401)
+    exempt_paths=None,           # exact paths that bypass auth
+    approval_handler=None,       # approval handler for runtime approval
+    output_formatter=to_markdown, # default: Markdown; None = raw JSON
+)
+
+# Launch as MCP server (blocking)
+mcp.serve(transport="streamable-http", port=8000, explorer=True)
+
+# Export as OpenAI tools
+tools = mcp.to_openai_tools(strict=True)
+
+# Embed into ASGI app
+async with mcp.async_serve(explorer=True) as app:
+    ...
+
+# Inspect
+mcp.tools       # list of module IDs
+mcp.registry    # underlying Registry
+mcp.executor    # underlying Executor
+```
+
+### `serve()` (function-based)
 
 ```python
 from apcore_mcp import serve
@@ -512,7 +582,8 @@ pytest --cov                     # with coverage report
 
 ```
 src/apcore_mcp/
-├── __init__.py              # Public API: serve(), to_openai_tools()
+├── __init__.py              # Public API: APCoreMCP, serve(), to_openai_tools()
+├── apcore_mcp.py            # APCoreMCP unified entry point class
 ├── __main__.py              # CLI entry point
 ├── _utils.py                # Registry/Executor resolution utilities
 ├── constants.py             # Error codes, registry events, module ID patterns
