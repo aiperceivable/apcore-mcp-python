@@ -75,15 +75,14 @@ All modules are auto-discovered and exposed as MCP tools. No code needed.
 
 ### Programmatic approach (Python API)
 
-The `APCoreMCP` class is the recommended entry point — one object, all capabilities.
-Output is automatically formatted as Markdown for optimal LLM readability:
+The `APCoreMCP` class is the recommended entry point — one object, all capabilities:
 
 ```python
 from apcore_mcp import APCoreMCP
 
 mcp = APCoreMCP("./extensions")
 
-# Launch as MCP Server (output auto-formatted as Markdown)
+# Launch as MCP Server
 mcp.serve()
 
 # Or with HTTP + Explorer UI
@@ -91,9 +90,6 @@ mcp.serve(transport="streamable-http", port=8000, explorer=True)
 
 # Or export as OpenAI tools
 tools = mcp.to_openai_tools()
-
-# Opt out of Markdown formatting (raw JSON output)
-mcp = APCoreMCP("./extensions", output_formatter=None)
 ```
 
 You can also pass an existing `Registry` or `Executor`:
@@ -276,7 +272,7 @@ mcp = APCoreMCP(
     require_auth=True,           # False = permissive mode (no 401)
     exempt_paths=None,           # exact paths that bypass auth
     approval_handler=None,       # approval handler for runtime approval
-    output_formatter=to_markdown, # default: Markdown; None = raw JSON
+    output_formatter=None,        # default: raw JSON; use to_markdown for Markdown
 )
 
 # Launch as MCP server (blocking)
@@ -428,6 +424,30 @@ CLI usage:
 ```bash
 apcore-mcp --extensions-dir ./extensions --approval elicit
 ```
+
+### Output Formatting
+
+By default, tool execution results are serialized as JSON (`json.dumps`). You can customize this by passing an `output_formatter` callable that converts a `dict` result into a string.
+
+For Markdown output, use `to_markdown` from [apcore-toolkit](https://github.com/aipartnerup/apcore-toolkit-python):
+
+```python
+from apcore_toolkit import to_markdown
+from apcore_mcp import APCoreMCP
+
+mcp = APCoreMCP("./extensions", output_formatter=to_markdown)
+```
+
+Or define your own formatter:
+
+```python
+def my_formatter(data: dict) -> str:
+    return "\n".join(f"{k}: {v}" for k, v in data.items())
+
+mcp = APCoreMCP("./extensions", output_formatter=my_formatter)
+```
+
+The `output_formatter` parameter is also available on the function-based `serve()` API and on `ExecutionRouter` directly.
 
 ### Extension Helpers
 

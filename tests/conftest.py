@@ -24,6 +24,11 @@ class ModuleAnnotations:
     requires_approval: bool = False
     open_world: bool = True
     streaming: bool = False
+    cacheable: bool = False
+    cache_ttl: int = 0
+    cache_key_fields: list[str] | None = None
+    paginated: bool = False
+    pagination_style: str = "cursor"
 
 
 @dataclass

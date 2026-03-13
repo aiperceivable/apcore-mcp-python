@@ -11,6 +11,8 @@ DEFAULT_ANNOTATIONS = {
     "requires_approval": False,
     "open_world": True,
     "streaming": False,
+    "cacheable": False,
+    "paginated": False,
 }
 
 
@@ -93,6 +95,10 @@ class AnnotationMapper:
             parts.append(f"open_world={str(annotations.open_world).lower()}")
         if getattr(annotations, "streaming", False) != DEFAULT_ANNOTATIONS["streaming"]:
             parts.append(f"streaming={str(getattr(annotations, 'streaming', False)).lower()}")
+        if getattr(annotations, "cacheable", False) != DEFAULT_ANNOTATIONS["cacheable"]:
+            parts.append(f"cacheable={str(getattr(annotations, 'cacheable', False)).lower()}")
+        if getattr(annotations, "paginated", False) != DEFAULT_ANNOTATIONS["paginated"]:
+            parts.append(f"paginated={str(getattr(annotations, 'paginated', False)).lower()}")
 
         if not warnings and not parts:
             return ""

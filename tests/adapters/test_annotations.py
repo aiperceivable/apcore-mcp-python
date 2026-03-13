@@ -173,21 +173,38 @@ class TestAnnotationMapper:
 
     def test_description_suffix_includes_streaming_true(self, mapper: AnnotationMapper) -> None:
         """to_description_suffix includes streaming=true when annotation has streaming=True."""
-        from dataclasses import dataclass
-
-        @dataclass(frozen=True)
-        class StreamAnnotations:
-            readonly: bool = False
-            destructive: bool = False
-            idempotent: bool = False
-            requires_approval: bool = False
-            open_world: bool = True
-            streaming: bool = True
-
-        annotations = StreamAnnotations()
+        annotations = ModuleAnnotations(streaming=True)
         result = mapper.to_description_suffix(annotations)
 
         assert "streaming=true" in result.lower()
+
+    def test_description_suffix_includes_cacheable_true(self, mapper: AnnotationMapper) -> None:
+        """to_description_suffix includes cacheable=true when annotation has cacheable=True."""
+        annotations = ModuleAnnotations(cacheable=True)
+        result = mapper.to_description_suffix(annotations)
+
+        assert "cacheable=true" in result.lower()
+
+    def test_description_suffix_includes_paginated_true(self, mapper: AnnotationMapper) -> None:
+        """to_description_suffix includes paginated=true when annotation has paginated=True."""
+        annotations = ModuleAnnotations(paginated=True)
+        result = mapper.to_description_suffix(annotations)
+
+        assert "paginated=true" in result.lower()
+
+    def test_description_suffix_excludes_cacheable_default(self, mapper: AnnotationMapper) -> None:
+        """to_description_suffix omits cacheable when it is the default (False)."""
+        annotations = ModuleAnnotations()
+        result = mapper.to_description_suffix(annotations)
+
+        assert "cacheable" not in result
+
+    def test_description_suffix_excludes_paginated_default(self, mapper: AnnotationMapper) -> None:
+        """to_description_suffix omits paginated when it is the default (False)."""
+        annotations = ModuleAnnotations()
+        result = mapper.to_description_suffix(annotations)
+
+        assert "paginated" not in result
 
     def test_to_mcp_annotations_unchanged_no_streaming(self, mapper: AnnotationMapper) -> None:
         """to_mcp_annotations does not include streaming (MCP ToolAnnotations has no streaming field)."""

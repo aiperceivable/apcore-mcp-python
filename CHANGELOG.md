@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: `output_formatter` default changed to `None`**: `APCoreMCP` no longer defaults to `apcore_toolkit.to_markdown`. Results are now serialized as raw JSON by default. To restore Markdown formatting, pass `output_formatter=to_markdown` explicitly (requires `apcore-toolkit`).
+- **Dependency bump**: Requires `apcore>=0.13.0` (was `>=0.9.0`). Picks up new annotation fields (`cacheable`, `paginated`, `cache_ttl`, `cache_key_fields`, `pagination_style`) and `ExecutionCancelledError` now extending `ModuleError`.
+- **Annotation description suffix**: `AnnotationMapper.to_description_suffix()` now includes `cacheable` and `paginated` when set to non-default values.
+
+### Removed
+
+- **`apcore-toolkit` dependency**: Removed from `pyproject.toml` dependencies. `apcore-toolkit` is no longer required to use `apcore-mcp`. Users who want Markdown formatting can install it separately and pass `to_markdown` as the `output_formatter`.
+
 ## [0.9.0] - 2026-03-06
 
 ### Added
@@ -17,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Dependency bump**: Requires `apcore>=0.9.0` (was `>=0.7.0`). Picks up `PreflightResult`, 11-step executor pipeline, retry middleware, error code registry, and more.
+- **Dependency bump**: Requires `apcore>=0.9.0` (was `>=0.7.0`). Picks up `PreflightResult`, execution pipeline, retry middleware, error code registry, and more.
 - **Preflight validation aligned with apcore 0.9.0**: `ExecutionRouter` now passes the router-built `Context` (with identity, callbacks) to `Executor.validate()`, enabling accurate ACL and call-chain preflight checks. Error formatting handles all three `PreflightResult` error shapes: nested schema errors, flat field errors, and code-only errors.
 - **Annotation description suffix**: `AnnotationMapper.to_description_suffix()` now produces safety warnings (`WARNING: DESTRUCTIVE`, `REQUIRES APPROVAL`) as a separate section above the machine-readable annotation block, improving AI agent awareness of dangerous operations.
 - **Auth middleware best-effort identity on exempt paths**: `AuthMiddleware` now attempts identity extraction on exempt paths. Valid tokens populate `auth_identity_var` even when auth is not required, allowing downstream handlers to use identity when available.

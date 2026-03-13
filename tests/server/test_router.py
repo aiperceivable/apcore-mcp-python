@@ -901,6 +901,7 @@ class TestOutputFormatter:
 
     async def test_to_markdown_formatter(self) -> None:
         """to_markdown works as a formatter."""
+        pytest.importorskip("apcore_toolkit")
         from apcore_toolkit import to_markdown
 
         result_data = {"name": "Alice", "role": "admin"}

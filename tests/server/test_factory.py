@@ -8,7 +8,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.models import InitializationOptions
 
 from apcore_mcp.server.factory import MCPServerFactory
-from tests.conftest import ModuleDescriptor
+from tests.conftest import ModuleAnnotations, ModuleDescriptor
 
 # ---------------------------------------------------------------------------
 # Stub Registry
@@ -347,23 +347,12 @@ class TestBuildToolStreamingMeta:
 
     def test_build_tool_with_streaming_meta(self, factory: MCPServerFactory) -> None:
         """build_tool includes _meta.streaming when annotation has streaming=True."""
-        from dataclasses import dataclass
-
-        @dataclass(frozen=True)
-        class StreamAnnotations:
-            readonly: bool = False
-            destructive: bool = False
-            idempotent: bool = False
-            requires_approval: bool = False
-            open_world: bool = True
-            streaming: bool = True
-
         descriptor = ModuleDescriptor(
             module_id="stream.tool",
             description="Streaming tool",
             input_schema={"type": "object", "properties": {}},
             output_schema={},
-            annotations=StreamAnnotations(),
+            annotations=ModuleAnnotations(streaming=True),
         )
 
         tool = factory.build_tool(descriptor)
@@ -372,23 +361,12 @@ class TestBuildToolStreamingMeta:
 
     def test_build_tool_with_both_approval_and_streaming(self, factory: MCPServerFactory) -> None:
         """build_tool includes both requires_approval and streaming in _meta."""
-        from dataclasses import dataclass
-
-        @dataclass(frozen=True)
-        class FullAnnotations:
-            readonly: bool = False
-            destructive: bool = True
-            idempotent: bool = False
-            requires_approval: bool = True
-            open_world: bool = False
-            streaming: bool = True
-
         descriptor = ModuleDescriptor(
             module_id="full.tool",
             description="Full tool",
             input_schema={"type": "object", "properties": {}},
             output_schema={},
-            annotations=FullAnnotations(),
+            annotations=ModuleAnnotations(destructive=True, requires_approval=True, open_world=False, streaming=True),
         )
 
         tool = factory.build_tool(descriptor)

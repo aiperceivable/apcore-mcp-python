@@ -6,6 +6,8 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator, Callable
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _get_version
 
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
@@ -25,6 +27,11 @@ from apcore_mcp.server.listener import RegistryListener
 from apcore_mcp.server.router import ExecutionRouter
 from apcore_mcp.server.server import MCPServer
 from apcore_mcp.server.transport import MetricsExporter, TransportManager
+
+try:
+    __version__ = _get_version("apcore_mcp")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 __all__ = [
     # Public API
@@ -63,10 +70,6 @@ __all__ = [
     "MCP_PROGRESS_KEY",
     "MCP_ELICIT_KEY",
 ]
-
-from apcore_mcp._version import VERSION
-
-__version__ = VERSION
 
 
 def __getattr__(name: str) -> object:
@@ -134,7 +137,7 @@ def serve(
         output_formatter: Optional callable ``(dict) -> str`` that formats execution
             results into text for LLM consumption. When None (default), results
             are serialised with ``json.dumps``. Use ``apcore_toolkit.to_markdown``
-            for human-readable Markdown output (this is the default in APCoreMCP).
+            for human-readable Markdown output.
     """
     if not name:
         raise ValueError("name must not be empty")

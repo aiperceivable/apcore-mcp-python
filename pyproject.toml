@@ -25,8 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.9.0",
-    "apcore-toolkit>=0.1.0",
+    "apcore>=0.13.0",
     "mcp>=1.0.0,<2.0",
     "PyJWT>=2.0",
 ]

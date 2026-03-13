@@ -18,9 +18,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_USE_DEFAULT_FORMATTER = object()
-"""Sentinel to distinguish 'not passed' from 'explicitly set to None'."""
-
 
 class APCoreMCP:
     """Unified entry point for apcore-mcp.
@@ -65,7 +62,7 @@ class APCoreMCP:
         require_auth: bool = True,
         exempt_paths: set[str] | None = None,
         approval_handler: object | None = None,
-        output_formatter: Callable[[dict], str] | None | object = _USE_DEFAULT_FORMATTER,
+        output_formatter: Callable[[dict], str] | None = None,
     ) -> None:
         """Create an APCoreMCP instance.
 
@@ -83,9 +80,9 @@ class APCoreMCP:
             require_auth: If True, unauthenticated requests receive 401.
             exempt_paths: Exact paths that bypass authentication.
             approval_handler: Optional approval handler for runtime approval support.
-            output_formatter: Callable that formats dict results into text for
-                LLM consumption.  Defaults to ``apcore_toolkit.to_markdown``.
-                Set to ``None`` to disable (raw JSON output).
+            output_formatter: Optional callable that formats dict results into
+                text for LLM consumption.  Defaults to ``None`` (raw JSON).
+                Use ``apcore_toolkit.to_markdown`` for Markdown output.
         """
         if not name:
             raise ValueError("name must not be empty")
@@ -124,13 +121,7 @@ class APCoreMCP:
         self._require_auth = require_auth
         self._exempt_paths = exempt_paths
 
-        # Resolve output formatter: default → to_markdown, None → disabled
-        if output_formatter is _USE_DEFAULT_FORMATTER:
-            from apcore_toolkit import to_markdown
-
-            self._output_formatter: Callable[[dict], str] | None = to_markdown
-        else:
-            self._output_formatter = output_formatter  # type: ignore[assignment]
+        self._output_formatter = output_formatter
 
     @property
     def registry(self) -> Any:

@@ -174,12 +174,10 @@ class TestAPCoreMCPInit:
         mcp = APCoreMCP(StubRegistry(), approval_handler=MagicMock())
         assert not hasattr(mcp, "_approval_handler")
 
-    def test_default_output_formatter_is_to_markdown(self) -> None:
-        """Default output_formatter is apcore_toolkit.to_markdown."""
-        from apcore_toolkit import to_markdown
-
+    def test_default_output_formatter_is_none(self) -> None:
+        """Default output_formatter is None (raw JSON)."""
         mcp = APCoreMCP(StubRegistry())
-        assert mcp._output_formatter is to_markdown
+        assert mcp._output_formatter is None
 
     def test_output_formatter_none_disables(self) -> None:
         """Setting output_formatter=None disables formatting."""
