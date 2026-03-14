@@ -103,6 +103,9 @@ def serve(
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
+    explorer_title: str = "MCP Tool Explorer",
+    explorer_project_name: str | None = None,
+    explorer_project_url: str | None = None,
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
@@ -129,6 +132,9 @@ def serve(
         explorer: Enable the browser-based Tool Explorer UI (HTTP transports only).
         explorer_prefix: URL prefix for the explorer (default: "/explorer").
         allow_execute: Allow tool execution from the explorer UI.
+        explorer_title: Page title for the explorer UI.
+        explorer_project_name: Project name shown in the explorer footer.
+        explorer_project_url: Project URL linked in the explorer footer.
         authenticator: Optional Authenticator for JWT/token-based auth (HTTP transports only).
         require_auth: If True, unauthenticated requests receive 401.
             If False, requests proceed without identity (permissive mode).
@@ -194,6 +200,9 @@ def serve(
                 allow_execute=allow_execute,
                 explorer_prefix=explorer_prefix,
                 authenticator=authenticator,
+                title=explorer_title,
+                project_name=explorer_project_name,
+                project_url=explorer_project_url,
             )
         ]
         logger.info("Tool Explorer enabled at %s", explorer_prefix)
@@ -252,6 +261,9 @@ async def async_serve(
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
+    explorer_title: str = "MCP Tool Explorer",
+    explorer_project_name: str | None = None,
+    explorer_project_url: str | None = None,
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
@@ -288,6 +300,9 @@ async def async_serve(
         explorer: Enable the browser-based Tool Explorer UI.
         explorer_prefix: URL prefix for the explorer (default: "/explorer").
         allow_execute: Allow tool execution from the explorer UI.
+        explorer_title: Page title for the explorer UI.
+        explorer_project_name: Project name shown in the explorer footer.
+        explorer_project_url: Project URL linked in the explorer footer.
         authenticator: Optional Authenticator for JWT/token-based auth.
         require_auth: If True, unauthenticated requests receive 401.
         exempt_paths: Exact paths that bypass authentication.
@@ -350,6 +365,9 @@ async def async_serve(
                 allow_execute=allow_execute,
                 explorer_prefix=explorer_prefix,
                 authenticator=authenticator,
+                title=explorer_title,
+                project_name=explorer_project_name,
+                project_url=explorer_project_url,
             )
         ]
         logger.info("Tool Explorer enabled at %s", explorer_prefix)

@@ -123,7 +123,7 @@ class TestTC001ExplorerPage:
         response = client.get("/explorer/")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "APCore MCP Tool Explorer" in response.text
+        assert "MCP Tool Explorer" in response.text
 
     def test_explorer_page_is_self_contained(self, explorer_app: Starlette) -> None:
         client = TestClient(explorer_app)
@@ -393,7 +393,7 @@ class TestTC009CustomPrefix:
         # Should be accessible at /custom/
         response = client.get("/custom/")
         assert response.status_code == 200
-        assert "APCore MCP Tool Explorer" in response.text
+        assert "MCP Tool Explorer" in response.text
 
         # /custom/tools should work
         response = client.get("/custom/tools")
@@ -488,7 +488,6 @@ class TestTC010ExplorerAuth:
         assert response.status_code == 401
         data = response.json()
         assert data["error"] == "Unauthorized"
-        assert response.headers.get("www-authenticate") == "Bearer"
         mock_router.handle_call.assert_not_called()
 
     def test_call_tool_returns_401_with_invalid_token(

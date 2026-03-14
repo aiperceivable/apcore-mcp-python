@@ -171,6 +171,9 @@ class APCoreMCP:
         *,
         allow_execute: bool,
         explorer_prefix: str,
+        explorer_title: str = "MCP Tool Explorer",
+        explorer_project_name: str | None = None,
+        explorer_project_url: str | None = None,
     ) -> list:
         """Build explorer mount routes."""
         from apcore_mcp.explorer import create_explorer_mount
@@ -181,6 +184,9 @@ class APCoreMCP:
             allow_execute=allow_execute,
             explorer_prefix=explorer_prefix,
             authenticator=self._authenticator,
+            title=explorer_title,
+            project_name=explorer_project_name,
+            project_url=explorer_project_url,
         )
         logger.info("Tool Explorer enabled at %s", explorer_prefix)
         return [mount]
@@ -214,6 +220,9 @@ class APCoreMCP:
         explorer: bool = False,
         explorer_prefix: str = "/explorer",
         allow_execute: bool = False,
+        explorer_title: str = "MCP Tool Explorer",
+        explorer_project_name: str | None = None,
+        explorer_project_url: str | None = None,
     ) -> None:
         """Launch the MCP server (blocking).
 
@@ -226,6 +235,9 @@ class APCoreMCP:
             explorer: Enable the browser-based Tool Explorer UI (HTTP only).
             explorer_prefix: URL prefix for the explorer (default: "/explorer").
             allow_execute: Allow tool execution from the explorer UI.
+            explorer_title: Page title for the explorer UI.
+            explorer_project_name: Project name shown in the explorer footer.
+            explorer_project_url: Project URL linked in the explorer footer.
         """
         from apcore_mcp.server.transport import TransportManager
 
@@ -246,7 +258,13 @@ class APCoreMCP:
         extra_routes = None
         if explorer and transport_lower in ("streamable-http", "sse"):
             extra_routes = self._build_explorer_routes(
-                tools, router, allow_execute=allow_execute, explorer_prefix=explorer_prefix
+                tools,
+                router,
+                allow_execute=allow_execute,
+                explorer_prefix=explorer_prefix,
+                explorer_title=explorer_title,
+                explorer_project_name=explorer_project_name,
+                explorer_project_url=explorer_project_url,
             )
 
         auth_middleware = None
@@ -286,6 +304,9 @@ class APCoreMCP:
         explorer: bool = False,
         explorer_prefix: str = "/explorer",
         allow_execute: bool = False,
+        explorer_title: str = "MCP Tool Explorer",
+        explorer_project_name: str | None = None,
+        explorer_project_url: str | None = None,
     ) -> AsyncIterator[Starlette]:
         """Build an MCP Starlette ASGI app for embedding into a larger service.
 
@@ -305,6 +326,9 @@ class APCoreMCP:
             explorer: Enable the browser-based Tool Explorer UI.
             explorer_prefix: URL prefix for the explorer (default: "/explorer").
             allow_execute: Allow tool execution from the explorer UI.
+            explorer_title: Page title for the explorer UI.
+            explorer_project_name: Project name shown in the explorer footer.
+            explorer_project_url: Project URL linked in the explorer footer.
 
         Yields:
             A configured Starlette ASGI application with MCP endpoints.
@@ -326,7 +350,13 @@ class APCoreMCP:
         extra_routes = None
         if explorer:
             extra_routes = self._build_explorer_routes(
-                tools, router, allow_execute=allow_execute, explorer_prefix=explorer_prefix
+                tools,
+                router,
+                allow_execute=allow_execute,
+                explorer_prefix=explorer_prefix,
+                explorer_title=explorer_title,
+                explorer_project_name=explorer_project_name,
+                explorer_project_url=explorer_project_url,
             )
 
         auth_middleware = self._build_auth_middleware(explorer=explorer, explorer_prefix=explorer_prefix)

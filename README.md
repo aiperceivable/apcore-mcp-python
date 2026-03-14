@@ -47,7 +47,7 @@ pip install apcore-mcp
 
 That's it. Your existing project requires no changes.
 
-Requires Python 3.11+ and `apcore >= 0.9.0`.
+Requires Python 3.11+ and `apcore >= 0.13.0`.
 
 ## Quick Start
 
@@ -594,7 +594,7 @@ apcore-mcp (separate process / library call)
 git clone https://github.com/aipartnerup/apcore-mcp-python.git
 cd apcore-mcp
 pip install -e ".[dev]"
-pytest                           # 512 tests
+pytest                           # 556 tests
 pytest --cov                     # with coverage report
 ```
 
