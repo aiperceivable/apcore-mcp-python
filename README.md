@@ -598,41 +598,6 @@ pytest                           # 556 tests
 pytest --cov                     # with coverage report
 ```
 
-### Project Structure
-
-```
-src/apcore_mcp/
-├── __init__.py              # Public API: APCoreMCP, serve(), to_openai_tools()
-├── apcore_mcp.py            # APCoreMCP unified entry point class
-├── __main__.py              # CLI entry point
-├── _utils.py                # Registry/Executor resolution utilities
-├── constants.py             # Error codes, registry events, module ID patterns
-├── helpers.py               # Extension helpers: report_progress(), elicit()
-├── adapters/
-│   ├── schema.py            # JSON Schema conversion ($ref inlining)
-│   ├── annotations.py       # Annotation mapping (apcore → MCP/OpenAI)
-│   ├── approval.py          # ElicitationApprovalHandler (MCP ↔ apcore)
-│   ├── errors.py            # Error sanitization with AI guidance fields
-│   └── id_normalizer.py     # Module ID normalization (dot ↔ dash)
-├── auth/
-│   ├── __init__.py          # Auth exports
-│   ├── protocol.py          # Authenticator protocol
-│   ├── jwt.py               # JWTAuthenticator with ClaimMapping
-│   └── middleware.py        # ASGI AuthMiddleware + extract_headers()
-├── converters/
-│   └── openai.py            # OpenAI tool definition converter
-├── explorer/
-│   ├── __init__.py          # create_explorer_mount() entry point
-│   ├── routes.py            # Starlette route handlers
-│   └── html.py              # Self-contained HTML/CSS/JS page
-└── server/
-    ├── factory.py           # MCP Server creation and tool building
-    ├── server.py            # MCPServer non-blocking wrapper
-    ├── router.py            # Tool call → Executor routing
-    ├── transport.py         # Transport management (stdio/HTTP/SSE)
-    └── listener.py          # Dynamic module registration listener
-```
-
 ## License
 
 Apache-2.0
