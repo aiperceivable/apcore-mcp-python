@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/aipartnerup/apcore-mcp/main/apcore-mcp-logo.svg" alt="apcore-mcp logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/aiperceivable/apcore-mcp/main/apcore-mcp-logo.svg" alt="apcore-mcp logo" width="200"/>
 </div>
 
 # apcore-mcp
 
 Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
-**apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
+**apcore-mcp** turns any [apcore](https://github.com/aiperceivable/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
 
 ```
 ┌──────────────────┐
@@ -35,7 +35,7 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 ## Documentation
 
 For full documentation, including Quick Start guides for both Python and TypeScript, visit:
-**[https://aipartnerup.github.io/apcore-mcp/](https://aipartnerup.github.io/apcore-mcp/)**
+**[https://aiperceivable.github.io/apcore-mcp/](https://aiperceivable.github.io/apcore-mcp/)**
 
 ## Installation
 
@@ -429,7 +429,7 @@ apcore-mcp --extensions-dir ./extensions --approval elicit
 
 By default, tool execution results are serialized as JSON (`json.dumps`). You can customize this by passing an `output_formatter` callable that converts a `dict` result into a string.
 
-For Markdown output, use `to_markdown` from [apcore-toolkit](https://github.com/aipartnerup/apcore-toolkit-python):
+For Markdown output, use `to_markdown` from [apcore-toolkit](https://github.com/aiperceivable/apcore-toolkit-python):
 
 ```python
 from apcore_toolkit import to_markdown
@@ -591,7 +591,7 @@ apcore-mcp (separate process / library call)
 ## Development
 
 ```bash
-git clone https://github.com/aipartnerup/apcore-mcp-python.git
+git clone https://github.com/aiperceivable/apcore-mcp-python.git
 cd apcore-mcp
 pip install -e ".[dev]"
 pytest                           # 556 tests

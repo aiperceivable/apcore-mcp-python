@@ -10,7 +10,7 @@ import pytest
 from apcore_mcp.adapters.errors import ErrorMapper
 
 # Add apcore to path if available
-apcore_path = Path("/Users/tercel/WorkSpace/aipartnerup/apcore-python/src")
+apcore_path = Path("/Users/tercel/WorkSpace/aiperceivable/apcore-python/src")
 if apcore_path.exists():
     sys.path.insert(0, str(apcore_path))
 

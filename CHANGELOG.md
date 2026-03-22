@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-03-22
+
+### Changed
+- Rebrand: aipartnerup → aiperceivable
+
 ## [0.10.0] - 2026-03-14
 
 ### Changed
@@ -201,14 +206,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Filtering**: `tags` and `prefix` parameters for selective module exposure.
 - **260 tests**: Unit, integration, E2E, performance, and security test suites.
 
-[0.10.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.9.0...v0.10.0
-[0.9.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.8.0...v0.9.0
-[0.8.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.5.1...v0.6.0
-[0.5.1]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/aipartnerup/apcore-mcp-python/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/aipartnerup/apcore-mcp-python/releases/tag/v0.1.0
+[0.10.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/aiperceivable/apcore-mcp-python/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/aiperceivable/apcore-mcp-python/releases/tag/v0.1.0

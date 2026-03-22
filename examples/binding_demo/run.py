@@ -26,5 +26,5 @@ serve(
     allow_execute=True,
     explorer_title="APCore MCP Explorer",
     explorer_project_name="apcore-mcp",
-    explorer_project_url="https://github.com/aipartnerup/apcore-mcp-python",
+    explorer_project_url="https://github.com/aiperceivable/apcore-mcp-python",
 )
