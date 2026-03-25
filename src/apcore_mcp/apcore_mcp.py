@@ -304,9 +304,9 @@ class APCoreMCP:
         explorer: bool = False,
         explorer_prefix: str = "/explorer",
         allow_execute: bool = False,
-        explorer_title: str = "MCP Tool Explorer",
-        explorer_project_name: str | None = None,
-        explorer_project_url: str | None = None,
+        explorer_title: str = "APCore MCP Explorer",
+        explorer_project_name: str = "apcore-mcp",
+        explorer_project_url: str = "https://github.com/aiperceivable/apcore-mcp-python",
     ) -> AsyncIterator[Starlette]:
         """Build an MCP Starlette ASGI app for embedding into a larger service.
 
