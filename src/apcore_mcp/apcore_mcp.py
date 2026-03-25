@@ -171,9 +171,9 @@ class APCoreMCP:
         *,
         allow_execute: bool,
         explorer_prefix: str,
-        explorer_title: str = "MCP Tool Explorer",
-        explorer_project_name: str | None = None,
-        explorer_project_url: str | None = None,
+        explorer_title: str = "APCore MCP Explorer",
+        explorer_project_name: str = "apcore-mcp",
+        explorer_project_url: str = "https://github.com/aiperceivable/apcore-mcp-python",
     ) -> list:
         """Build explorer mount routes."""
         from apcore_mcp.explorer import create_explorer_mount
@@ -220,9 +220,9 @@ class APCoreMCP:
         explorer: bool = False,
         explorer_prefix: str = "/explorer",
         allow_execute: bool = False,
-        explorer_title: str = "MCP Tool Explorer",
-        explorer_project_name: str | None = None,
-        explorer_project_url: str | None = None,
+        explorer_title: str = "APCore MCP Explorer",
+        explorer_project_name: str = "apcore-mcp",
+        explorer_project_url: str = "https://github.com/aiperceivable/apcore-mcp-python",
     ) -> None:
         """Launch the MCP server (blocking).
 
