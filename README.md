@@ -47,7 +47,7 @@ pip install apcore-mcp
 
 That's it. Your existing project requires no changes.
 
-Requires Python 3.11+ and `apcore >= 0.13.0`.
+Requires Python 3.11+ and `apcore >= 0.14.0`.
 
 ## Quick Start
 
@@ -533,6 +533,7 @@ tools = to_openai_tools(executor)
 ## Features
 
 - **Auto-discovery** — all modules in the extensions directory are found and exposed automatically
+- **Display overlay** — `metadata["display"]["mcp"]` controls MCP tool names, descriptions, and guidance per module (§5.13); set via `binding_path` in `fastapi-apcore`
 - **Three transports** — stdio (default, for desktop clients), Streamable HTTP, and SSE
 - **JWT authentication** — optional Bearer token auth for HTTP transports with `JWTAuthenticator`, permissive mode, PEM key file support, and env var fallback
 - **Approval mechanism** — runtime approval via MCP elicitation, auto-approve, or always-deny handlers
@@ -552,8 +553,8 @@ tools = to_openai_tools(executor)
 
 | apcore | MCP |
 |--------|-----|
-| `module_id` | Tool name |
-| `description` | Tool description |
+| `metadata["display"]["mcp"]["alias"]` or `module_id` | Tool name |
+| `metadata["display"]["mcp"]["description"]` + guidance suffix or `description` | Tool description |
 | `input_schema` | `inputSchema` |
 | `annotations.readonly` | `ToolAnnotations.readOnlyHint` |
 | `annotations.destructive` | `ToolAnnotations.destructiveHint` |

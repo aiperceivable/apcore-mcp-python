@@ -91,9 +91,20 @@ class MCPServerFactory:
                 meta = {}
             meta["streaming"] = True
 
-        # Append AI intent metadata to description for agent visibility
-        description = descriptor.description
+        # Resolve display overlay fields (§5.13)
         metadata = getattr(descriptor, "metadata", None) or {}
+        display = metadata.get("display") or {}
+        mcp_display = display.get("mcp") or {}
+
+        tool_name: str = mcp_display.get("alias") or descriptor.module_id
+        description: str = mcp_display.get("description") or descriptor.description
+
+        # Append guidance if present (AI usage hints)
+        guidance: str | None = mcp_display.get("guidance")
+        if guidance:
+            description = f"{description}\n\nGuidance: {guidance}"
+
+        # Append legacy x- AI intent metadata for backward compatibility
         intent_parts = []
         for key in _AI_INTENT_KEYS:
             val = metadata.get(key)
@@ -104,7 +115,7 @@ class MCPServerFactory:
             description += "\n\n" + "\n".join(intent_parts)
 
         return mcp_types.Tool(
-            name=descriptor.module_id,
+            name=tool_name,
             description=description,
             inputSchema=input_schema,
             annotations=tool_annotations,

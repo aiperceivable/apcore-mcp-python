@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-03-23
+
+### Added
+
+- **Display overlay in `build_tool()`** (§5.13) — MCP tool name, description, and guidance now sourced from `metadata["display"]["mcp"]` when present.
+  - Tool name: `metadata["display"]["mcp"]["alias"]` (pre-sanitized by `DisplayResolver`, already `[a-zA-Z_][a-zA-Z0-9_-]*` and ≤ 64 chars).
+  - Tool description: `metadata["display"]["mcp"]["description"]`, with `guidance` appended as `\n\nGuidance: <text>` when set.
+  - Falls back to raw `module.name` / `module.description` when no display overlay is present.
+
+### Changed
+
+- Dependency bump: requires `apcore-toolkit >= 0.4.0` for `DisplayResolver`.
+
+### Tests
+
+- `TestBuildToolDisplayOverlay` (6 tests): MCP alias used as tool name, MCP description used, guidance appended, surface-specific override wins, fallback to scanner values when no overlay.
+
+---
+
 ## [0.10.1] - 2026-03-22
 
 ### Changed

@@ -130,6 +130,75 @@ class TestBuildTool:
         assert tool.annotations.openWorldHint is False
 
 
+class TestBuildToolDisplayOverlay:
+    """Tests for MCPServerFactory.build_tool reading metadata['display']['mcp'] (§5.13)."""
+
+    @pytest.fixture
+    def factory(self) -> MCPServerFactory:
+        return MCPServerFactory()
+
+    def _make_descriptor(self, metadata: dict) -> ModuleDescriptor:
+        from tests.conftest import ModuleAnnotations
+
+        return ModuleDescriptor(
+            module_id="image.resize",
+            description="Raw scanner description",
+            input_schema={"type": "object", "properties": {}},
+            output_schema={},
+            annotations=ModuleAnnotations(),
+            metadata=metadata,
+        )
+
+    def test_tool_name_from_mcp_alias(self, factory: MCPServerFactory) -> None:
+        """Tool.name is taken from metadata['display']['mcp']['alias'] when set."""
+        d = self._make_descriptor({"display": {"mcp": {"alias": "img_resize"}, "alias": "img_resize"}})
+        tool = factory.build_tool(d)
+        assert tool.name == "img_resize"
+
+    def test_tool_name_falls_back_to_module_id(self, factory: MCPServerFactory) -> None:
+        """Tool.name falls back to descriptor.module_id when no MCP alias set."""
+        d = self._make_descriptor({})
+        tool = factory.build_tool(d)
+        assert tool.name == "image.resize"
+
+    def test_tool_description_from_mcp_display(self, factory: MCPServerFactory) -> None:
+        """Tool.description is taken from metadata['display']['mcp']['description'] when set."""
+        d = self._make_descriptor({"display": {"mcp": {"alias": "img_resize", "description": "MCP-specific desc"}}})
+        tool = factory.build_tool(d)
+        assert tool.description is not None
+        assert "MCP-specific desc" in tool.description
+
+    def test_tool_description_falls_back_to_descriptor(self, factory: MCPServerFactory) -> None:
+        """Tool.description falls back to descriptor.description when no MCP description set."""
+        d = self._make_descriptor({})
+        tool = factory.build_tool(d)
+        assert tool.description == "Raw scanner description"
+
+    def test_guidance_appended_to_description(self, factory: MCPServerFactory) -> None:
+        """Guidance from display overlay is appended to Tool.description."""
+        d = self._make_descriptor(
+            {
+                "display": {
+                    "mcp": {
+                        "alias": "img_resize",
+                        "description": "Resize image",
+                        "guidance": "Use width/height in pixels.",
+                    }
+                }
+            }
+        )
+        tool = factory.build_tool(d)
+        assert tool.description is not None
+        assert "Guidance: Use width/height in pixels." in tool.description
+
+    def test_no_guidance_when_not_set(self, factory: MCPServerFactory) -> None:
+        """Guidance section is absent when display.mcp.guidance is not set."""
+        d = self._make_descriptor({"display": {"mcp": {"alias": "img_resize"}}})
+        tool = factory.build_tool(d)
+        assert tool.description is not None
+        assert "Guidance:" not in tool.description
+
+
 class TestBuildTools:
     """Tests for MCPServerFactory.build_tools."""
 
