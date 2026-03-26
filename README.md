@@ -246,7 +246,7 @@ apcore-mcp --extensions-dir PATH [OPTIONS]
 | `--exempt-paths` | — | Comma-separated paths exempt from auth (e.g. `/health,/metrics`) |
 | `--approval` | `off` | Approval handler: `elicit`, `auto-approve`, `always-deny`, or `off` |
 
-JWT key resolution priority: `--jwt-key-file` > `--jwt-secret` > `JWT_SECRET` environment variable.
+JWT key resolution priority: `--jwt-key-file` > `--jwt-secret` > `APCORE_JWT_SECRET` environment variable.
 
 Exit codes: `0` normal, `1` invalid arguments, `2` startup failure.
 

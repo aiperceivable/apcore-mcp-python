@@ -68,10 +68,10 @@ PYTHONPATH=./examples/binding_demo python examples/binding_demo/run.py
 
 ## JWT Authentication
 
-Enable JWT authentication by setting the `JWT_SECRET` environment variable:
+Enable JWT authentication by setting the `APCORE_JWT_SECRET` environment variable:
 
 ```bash
-JWT_SECRET=my-secret PYTHONPATH=./examples/binding_demo python examples/run.py
+APCORE_JWT_SECRET=my-secret PYTHONPATH=./examples/binding_demo python examples/run.py
 ```
 
 ### Test Token

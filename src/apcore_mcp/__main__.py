@@ -199,7 +199,7 @@ def main() -> None:
     else:
         logger.info("Discovered %d module(s) in '%s'.", num_modules, extensions_dir)
 
-    # Resolve JWT key: --jwt-key-file → --jwt-secret → JWT_SECRET env var
+    # Resolve JWT key: --jwt-key-file → --jwt-secret → APCORE_JWT_SECRET env var
     jwt_key: str | None = None
     if args.jwt_key_file:
         key_path: Path = args.jwt_key_file
@@ -210,7 +210,7 @@ def main() -> None:
     elif args.jwt_secret:
         jwt_key = args.jwt_secret
     else:
-        jwt_key = os.environ.get("JWT_SECRET")
+        jwt_key = os.environ.get("APCORE_JWT_SECRET")
 
     # Build JWT authenticator if key resolved
     authenticator = None

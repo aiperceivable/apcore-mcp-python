@@ -462,15 +462,15 @@ class TestJWTKeyFile:
 
 
 # ===========================================================================
-# Test: JWT_SECRET env var fallback
+# Test: APCORE_JWT_SECRET env var fallback
 # ===========================================================================
 
 
 class TestJWTEnvVarFallback:
-    """Verify JWT_SECRET environment variable is used as fallback."""
+    """Verify APCORE_JWT_SECRET environment variable is used as fallback."""
 
     def test_env_var_used_when_no_flags(self, tmp_path):
-        """JWT_SECRET env var is used when neither --jwt-secret nor --jwt-key-file is set."""
+        """APCORE_JWT_SECRET env var is used when neither --jwt-secret nor --jwt-key-file is set."""
         mock_auth_cls = MagicMock()
         patches = _make_patches()
         auth_module = MagicMock(JWTAuthenticator=mock_auth_cls)
@@ -478,14 +478,14 @@ class TestJWTEnvVarFallback:
             patches["registry_patch"],
             patches["serve_patch"],
             patch.dict("sys.modules", {"apcore_mcp.auth": auth_module}),
-            patch.dict(os.environ, {"JWT_SECRET": "env-secret"}, clear=False),
+            patch.dict(os.environ, {"APCORE_JWT_SECRET": "env-secret"}, clear=False),
         ):
             _run_main("--extensions-dir", str(tmp_path))
             mock_auth_cls.assert_called_once()
             assert mock_auth_cls.call_args.kwargs["key"] == "env-secret"
 
     def test_jwt_secret_flag_takes_priority_over_env(self, tmp_path):
-        """--jwt-secret takes priority over JWT_SECRET env var."""
+        """--jwt-secret takes priority over APCORE_JWT_SECRET env var."""
         mock_auth_cls = MagicMock()
         patches = _make_patches()
         auth_module = MagicMock(JWTAuthenticator=mock_auth_cls)
@@ -493,7 +493,7 @@ class TestJWTEnvVarFallback:
             patches["registry_patch"],
             patches["serve_patch"],
             patch.dict("sys.modules", {"apcore_mcp.auth": auth_module}),
-            patch.dict(os.environ, {"JWT_SECRET": "env-secret"}, clear=False),
+            patch.dict(os.environ, {"APCORE_JWT_SECRET": "env-secret"}, clear=False),
         ):
             _run_main(
                 "--extensions-dir",
@@ -504,21 +504,21 @@ class TestJWTEnvVarFallback:
             assert mock_auth_cls.call_args.kwargs["key"] == "flag-secret"
 
     def test_no_authenticator_when_no_key_source(self, tmp_path):
-        """No authenticator created when no --jwt-secret, --jwt-key-file, or JWT_SECRET."""
+        """No authenticator created when no --jwt-secret, --jwt-key-file, or APCORE_JWT_SECRET."""
         patches = _make_patches()
         with (
             patches["registry_patch"],
             patches["serve_patch"] as mock_serve,
             patch.dict(os.environ, {}, clear=False),
         ):
-            # Ensure JWT_SECRET is not set
-            env_backup = os.environ.pop("JWT_SECRET", None)
+            # Ensure APCORE_JWT_SECRET is not set
+            env_backup = os.environ.pop("APCORE_JWT_SECRET", None)
             try:
                 _run_main("--extensions-dir", str(tmp_path))
                 assert mock_serve.call_args.kwargs["authenticator"] is None
             finally:
                 if env_backup is not None:
-                    os.environ["JWT_SECRET"] = env_backup
+                    os.environ["APCORE_JWT_SECRET"] = env_backup
 
 
 # ===========================================================================

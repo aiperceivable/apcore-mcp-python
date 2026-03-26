@@ -87,15 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Permissive auth mode**: `require_auth=False` parameter on `serve()` and `MCPServer` allows unauthenticated requests to proceed without identity instead of returning 401.
 - **`exempt_paths` parameter**: `serve()` and `MCPServer` accept `exempt_paths` for exact-path authentication bypass (e.g. `{"/health", "/metrics"}`).
 - **CLI JWT flags**: `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer` arguments for enabling JWT authentication from the command line.
-- **CLI `--jwt-key-file`**: Read JWT verification key from a PEM file (e.g. RS256 public key). Takes priority over `--jwt-secret` and `JWT_SECRET` env var.
+- **CLI `--jwt-key-file`**: Read JWT verification key from a PEM file (e.g. RS256 public key). Takes priority over `--jwt-secret` and `APCORE_JWT_SECRET` env var.
 - **CLI `--jwt-require-auth` / `--no-jwt-require-auth`**: Toggle permissive auth mode from the command line.
 - **CLI `--exempt-paths`**: Comma-separated list of paths exempt from authentication.
-- **`JWT_SECRET` env var fallback**: CLI resolves JWT key in priority order: `--jwt-key-file` > `--jwt-secret` > `JWT_SECRET` environment variable.
+- **`APCORE_JWT_SECRET` env var fallback**: CLI resolves JWT key in priority order: `--jwt-key-file` > `--jwt-secret` > `APCORE_JWT_SECRET` environment variable.
 - **Explorer Authorization UI**: Swagger-UI-style Authorization input field in the Tool Explorer. Paste a Bearer token to authenticate tool execution requests. Generated cURL commands automatically include the Authorization header.
 - **Explorer auth enforcement**: When `authenticator` is set, tool execution via the Explorer returns 401 Unauthorized without a valid Bearer token. The Explorer UI displays a clear error message prompting the user to enter a token.
 - **Auth failure audit logging**: `AuthMiddleware` emits a `WARNING` log with the request path on authentication failure.
 - **`extract_headers()` utility**: Public helper to extract ASGI scope headers as a lowercase-key dict. Exported from `apcore_mcp.auth`.
-- **JWT authentication example**: `examples/run.py` supports `JWT_SECRET` environment variable to demonstrate JWT authentication with a sample token.
+- **JWT authentication example**: `examples/run.py` supports `APCORE_JWT_SECRET` environment variable to demonstrate JWT authentication with a sample token.
 - **PyJWT dependency**: Added `PyJWT>=2.0` to project dependencies.
 
 ### Changed

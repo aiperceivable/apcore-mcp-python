@@ -5,8 +5,8 @@ Usage (from the project root):
 
 Then open http://127.0.0.1:8000/explorer/ in your browser.
 
-Enable JWT authentication by setting JWT_SECRET:
-    JWT_SECRET=my-secret python examples/run.py
+Enable JWT authentication by setting APCORE_JWT_SECRET:
+    APCORE_JWT_SECRET=my-secret python examples/run.py
 
 Then test with curl:
     curl http://localhost:8000/health                        # 200 (exempt)
@@ -32,9 +32,9 @@ print(f"Class-based modules: {n_class}")
 print(f"Binding modules:     {len(binding_modules)}")
 print(f"Total:               {len(registry.module_ids)}")
 
-# 3. Build JWT authenticator if JWT_SECRET is set
+# 3. Build JWT authenticator if APCORE_JWT_SECRET is set
 authenticator = None
-jwt_secret = os.environ.get("JWT_SECRET")
+jwt_secret = os.environ.get("APCORE_JWT_SECRET")
 if jwt_secret:
     authenticator = JWTAuthenticator(key=jwt_secret)
     print(f"JWT authentication:  enabled (HS256)")
@@ -48,7 +48,7 @@ if jwt_secret:
     )
     print(f"Sample token:        {sample_token}")
 else:
-    print("JWT authentication:  disabled (set JWT_SECRET to enable)")
+    print("JWT authentication:  disabled (set APCORE_JWT_SECRET to enable)")
 
 # 4. Launch MCP server with Explorer UI
 serve(
