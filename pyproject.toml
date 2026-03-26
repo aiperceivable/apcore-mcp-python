@@ -27,7 +27,7 @@ classifiers = [
 dependencies = [
     "apcore>=0.14.0",
     "mcp>=1.0.0,<2.0",
-    "mcp-embedded-ui>=0.3.0",
+    "mcp-embedded-ui>=0.3.1",
     "PyJWT>=2.0",
 ]
 
