@@ -47,7 +47,7 @@ pip install apcore-mcp
 
 That's it. Your existing project requires no changes.
 
-Requires Python 3.11+ and `apcore >= 0.14.0`.
+Requires Python 3.11+ and `apcore >= 0.15.1`.
 
 ## Quick Start
 
@@ -546,6 +546,39 @@ tools = to_openai_tools(executor)
 - **Dynamic registration** — modules registered/unregistered at runtime are reflected immediately
 - **Dual output** — same registry powers both MCP Server and OpenAI tool definitions
 - **Tool Explorer** — browser-based UI for browsing schemas and testing tools interactively, with Swagger-UI-style auth input
+- **Config Bus integration** — registers an `mcp` namespace with the apcore Config Bus; configure transport, host, port, and more via unified `apcore.yaml` or `APCORE_MCP_*` env vars
+- **Error Formatter Registry** — registers an MCP-specific error formatter for ecosystem-wide consistent error handling
+
+## Config Bus Integration
+
+apcore-mcp registers an `mcp` namespace with the apcore Config Bus at import time. This means MCP settings can live alongside other apcore configuration in a single `apcore.yaml`:
+
+```yaml
+apcore:
+  version: "1.0.0"
+mcp:
+  transport: streamable-http
+  host: 0.0.0.0
+  port: 9000
+  explorer: true
+  require_auth: false
+```
+
+Environment variable overrides use the `APCORE_MCP_` prefix:
+
+```bash
+APCORE_MCP_TRANSPORT=streamable-http
+APCORE_MCP_PORT=9000
+APCORE_MCP_EXPLORER=true
+```
+
+**Defaults:** `transport=stdio`, `host=127.0.0.1`, `port=8000`, `explorer=false`, `require_auth=true`.
+
+The namespace, prefix, and defaults are also available as importable constants:
+
+```python
+from apcore_mcp import MCP_NAMESPACE, MCP_ENV_PREFIX, MCP_DEFAULTS
+```
 
 ## How It Works
 
