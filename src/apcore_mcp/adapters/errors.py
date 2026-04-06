@@ -140,6 +140,52 @@ class ErrorMapper:
             self._attach_ai_guidance(error, result)
             return result
 
+        # Config env map conflict
+        if code == ERROR_CODES.get("CONFIG_ENV_MAP_CONFLICT"):
+            env_var = details.get("env_var", "unknown") if details else "unknown"
+            result = {
+                "is_error": True,
+                "error_type": code,
+                "message": f"Config env map conflict: {env_var}",
+                "details": details,
+            }
+            self._attach_ai_guidance(error, result)
+            return result
+
+        # Pipeline abort
+        if code == ERROR_CODES.get("PIPELINE_ABORT") or type(error).__name__ == "PipelineAbortError":
+            step = details.get("step", "unknown") if details else "unknown"
+            result = {
+                "is_error": True,
+                "error_type": code,
+                "message": f"Pipeline aborted at step: {step}",
+                "details": details,
+            }
+            self._attach_ai_guidance(error, result)
+            return result
+
+        # Step not found
+        if code == ERROR_CODES.get("STEP_NOT_FOUND"):
+            result = {
+                "is_error": True,
+                "error_type": code,
+                "message": f"Pipeline step not found: {message}",
+                "details": details,
+            }
+            self._attach_ai_guidance(error, result)
+            return result
+
+        # Version incompatible
+        if code == ERROR_CODES.get("VERSION_INCOMPATIBLE"):
+            result = {
+                "is_error": True,
+                "error_type": code,
+                "message": f"Version incompatible: {message}",
+                "details": details,
+            }
+            self._attach_ai_guidance(error, result)
+            return result
+
         # All other apcore errors: pass through message and details
         result = {
             "is_error": True,

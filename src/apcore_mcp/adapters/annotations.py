@@ -100,14 +100,22 @@ class AnnotationMapper:
         if getattr(annotations, "paginated", False) != DEFAULT_ANNOTATIONS["paginated"]:
             parts.append(f"paginated={str(getattr(annotations, 'paginated', False)).lower()}")
 
-        if not warnings and not parts:
-            return ""
-
         sections: list[str] = []
         if warnings:
             sections.append("\n".join(warnings))
         if parts:
             sections.append(f"[Annotations: {', '.join(parts)}]")
+
+        # F-041: Extract mcp_ prefixed keys from extra
+        extra = getattr(annotations, "extra", None)
+        if extra and isinstance(extra, dict):
+            for key in sorted(extra.keys()):
+                if key.startswith("mcp_") and isinstance(extra[key], str):
+                    stripped = key[4:]  # Remove "mcp_" prefix
+                    sections.append(f"{stripped}: {extra[key]}")
+
+        if not sections:
+            return ""
 
         return "\n\n" + "\n\n".join(sections)
 

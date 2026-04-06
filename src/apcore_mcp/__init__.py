@@ -125,6 +125,9 @@ def serve(
     exempt_paths: set[str] | None = None,
     approval_handler: object | None = None,
     output_formatter: Callable | None = None,
+    strategy: str | None = None,
+    redact_output: bool = True,
+    trace: bool = False,
 ) -> None:
     """Launch an MCP Server that exposes all apcore modules as tools.
 
@@ -140,7 +143,7 @@ def serve(
         tags: Filter modules by tags. Only modules with ALL specified tags are exposed.
         prefix: Filter modules by ID prefix.
         log_level: Set the log level for the apcore_mcp logger (e.g. "DEBUG", "INFO").
-        dynamic: Reserved for future dynamic tool registration support.
+        dynamic: Enable dynamic tool registration via RegistryListener.
         validate_inputs: Validate tool inputs against schemas before execution.
         metrics_collector: Optional MetricsCollector for Prometheus /metrics endpoint.
         explorer: Enable the browser-based Tool Explorer UI (HTTP transports only).
@@ -158,6 +161,13 @@ def serve(
             results into text for LLM consumption. When None (default), results
             are serialised with ``json.dumps``. Use ``apcore_toolkit.to_markdown``
             for human-readable Markdown output.
+        strategy: Pipeline execution strategy. Valid values: "standard",
+            "internal", "testing", "performance", "minimal". Ignored when
+            an Executor is provided directly.
+        redact_output: Redact sensitive fields from tool outputs using
+            ``apcore.redact_sensitive()``. Defaults to True.
+        trace: Enable pipeline trace capture via ``call_async_with_trace()``.
+            When True, trace information is appended to tool call results.
     """
     if not name:
         raise ValueError("name must not be empty")
@@ -182,16 +192,59 @@ def serve(
         logging.getLogger("apcore_mcp").setLevel(getattr(logging, log_level.upper()))
 
     registry = resolve_registry(registry_or_executor)
-    executor = resolve_executor(registry_or_executor, approval_handler=approval_handler)
+
+    # B5: F-040 — Check Config Bus for YAML pipeline configuration
+    pipeline_strategy = None
+    try:
+        from apcore import Config, build_strategy_from_config
+
+        config = Config.load() if Config is not None else None
+        if config:
+            pipeline_config = config.get("mcp.pipeline")
+            if pipeline_config and isinstance(pipeline_config, dict):
+                pipeline_strategy = build_strategy_from_config(pipeline_config, registry=registry)
+                if strategy:
+                    logger.warning("YAML pipeline config overrides strategy parameter")
+    except Exception:
+        pass  # Config Bus not available or no pipeline section
+
+    if strategy is not None and hasattr(registry_or_executor, "call_async"):
+        logger.warning("strategy parameter ignored when Executor is provided")
+    executor = resolve_executor(
+        registry_or_executor, approval_handler=approval_handler, strategy=pipeline_strategy or strategy
+    )
+
+    # Build output_schema_map for redaction
+    output_schema_map: dict[str, dict] = {}
+    if redact_output:
+        for module_id in registry.list(tags=tags, prefix=prefix):
+            descriptor = registry.get_definition(module_id)
+            if descriptor is not None:
+                schema = getattr(descriptor, "output_schema", None)
+                if schema:
+                    output_schema_map[module_id] = schema
 
     # Build MCP server components
     factory = MCPServerFactory()
     server = factory.create_server(name=name, version=version)
     tools = factory.build_tools(registry, tags=tags, prefix=prefix)
-    router = ExecutionRouter(executor, validate_inputs=validate_inputs, output_formatter=output_formatter)
+    router = ExecutionRouter(
+        executor,
+        validate_inputs=validate_inputs,
+        output_formatter=output_formatter,
+        redact_output=redact_output,
+        output_schema_map=output_schema_map,
+        trace=trace,
+    )
     factory.register_handlers(server, tools, router)
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=version)
+
+    # Start dynamic tool registration listener
+    if dynamic:
+        listener = RegistryListener(registry, factory)
+        listener.start()
+        logger.info("RegistryListener started for dynamic tool registration")
 
     logger.info(
         "Starting MCP server '%s' v%s with %d tools via %s",
@@ -283,6 +336,9 @@ async def async_serve(
     exempt_paths: set[str] | None = None,
     approval_handler: object | None = None,
     output_formatter: Callable | None = None,
+    strategy: str | None = None,
+    trace: bool = False,
+    redact_output: bool = True,
 ) -> AsyncIterator[Starlette]:
     """Build an MCP Starlette ASGI app for embedding into a larger service.
 
@@ -322,6 +378,9 @@ async def async_serve(
         exempt_paths: Exact paths that bypass authentication.
         approval_handler: Optional approval handler for runtime approval.
         output_formatter: Optional callable ``(dict) -> str`` for formatting results.
+        strategy: Pipeline execution strategy ("standard", "internal", "testing", "performance", "minimal").
+        trace: Enable PipelineTrace capture via call_async_with_trace().
+        redact_output: Apply redact_sensitive() to output before serialization.
 
     Yields:
         A configured Starlette ASGI application with MCP endpoints.
@@ -349,13 +408,32 @@ async def async_serve(
         logging.getLogger("apcore_mcp").setLevel(getattr(logging, log_level.upper()))
 
     registry = resolve_registry(registry_or_executor)
-    executor = resolve_executor(registry_or_executor, approval_handler=approval_handler)
+
+    # F-036: strategy parameter
+    if hasattr(registry_or_executor, "call_async") and strategy is not None:
+        logger.warning("strategy parameter ignored when Executor is provided")
+    executor = resolve_executor(registry_or_executor, approval_handler=approval_handler, strategy=strategy)
+
+    # F-038: Build output schema map for redaction
+    output_schema_map: dict[str, dict] = {}
+    if redact_output:
+        for mid in registry.list(tags=tags, prefix=prefix):
+            desc = registry.get_definition(mid)
+            if desc and getattr(desc, "output_schema", None):
+                output_schema_map[mid] = desc.output_schema
 
     # Build MCP server components
     factory = MCPServerFactory()
     server = factory.create_server(name=name, version=resolved_version)
     tools = factory.build_tools(registry, tags=tags, prefix=prefix)
-    router = ExecutionRouter(executor, validate_inputs=validate_inputs, output_formatter=output_formatter)
+    router = ExecutionRouter(
+        executor,
+        validate_inputs=validate_inputs,
+        output_formatter=output_formatter,
+        redact_output=redact_output,
+        trace=trace,
+        output_schema_map=output_schema_map,
+    )
     factory.register_handlers(server, tools, router)
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=resolved_version)

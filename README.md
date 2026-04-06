@@ -47,7 +47,7 @@ pip install apcore-mcp
 
 That's it. Your existing project requires no changes.
 
-Requires Python 3.11+ and `apcore >= 0.15.1`.
+Requires Python 3.11+ and `apcore >= 0.17.1`.
 
 ## Quick Start
 

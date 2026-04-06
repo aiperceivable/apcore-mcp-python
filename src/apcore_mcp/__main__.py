@@ -127,6 +127,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated paths exempt from auth (default: /health,/metrics).",
     )
 
+    # Strategy option
+    parser.add_argument(
+        "--strategy",
+        choices=["standard", "internal", "testing", "performance", "minimal"],
+        default=None,
+        help="Pipeline execution strategy (default: standard).",
+    )
+
     # Approval options
     parser.add_argument(
         "--approval",
@@ -264,6 +272,7 @@ def main() -> None:
             require_auth=args.jwt_require_auth,
             exempt_paths=exempt_paths_set,
             approval_handler=approval_handler,
+            strategy=args.strategy,
         )
     except Exception:
         logger.exception("Server startup failed.")

@@ -66,16 +66,41 @@ class ExecutionRouter:
         *,
         validate_inputs: bool = False,
         output_formatter: Callable[[dict[str, Any]], str] | None = None,
+        redact_output: bool = True,
+        output_schema_map: dict[str, dict] | None = None,
+        trace: bool = False,
     ) -> None:
         self._executor = executor
         self._error_mapper = ErrorMapper()
         self._validate_inputs = validate_inputs
         self._output_formatter = output_formatter
+        self._redact_output = redact_output
+        self._output_schema_map = output_schema_map or {}
+        self._trace = trace
 
         # Cache whether executor methods accept a context parameter,
         # so we avoid a broad TypeError catch on every call.
         self._call_async_accepts_context = self._check_accepts_context(executor.call_async)
         self._stream_accepts_context = self._check_accepts_context(getattr(executor, "stream", None))
+
+    def _maybe_redact(self, tool_name: str, result: Any) -> Any:
+        """Apply output redaction if enabled and an output_schema exists for the tool.
+
+        Uses ``apcore.redact_sensitive()`` to strip sensitive fields.
+        Fails open: if redaction raises, the original result is returned.
+        """
+        if not self._redact_output:
+            return result
+        output_schema = self._output_schema_map.get(tool_name)
+        if output_schema is None:
+            return result
+        try:
+            from apcore import redact_sensitive
+
+            return redact_sensitive(result, output_schema)
+        except Exception:
+            logger.warning("redact_sensitive failed for %s, returning unredacted output", tool_name, exc_info=True)
+            return result
 
     def _format_result(self, result: Any) -> str:
         """Format an execution result into text for LLM consumption.
@@ -104,6 +129,44 @@ class ExecutionRouter:
             return len(sig.parameters) >= 3
         except (ValueError, TypeError):
             return True  # assume yes if we cannot inspect
+
+    def validate_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run preflight validation on a tool call without executing it.
+
+        Calls ``executor.validate()`` and converts the ``PreflightResult``
+        into a plain dict.
+
+        Returns:
+            A dict with ``valid``, ``checks``, and ``requires_approval`` keys.
+        """
+        try:
+            result = self._executor.validate(tool_name, arguments)
+            return {
+                "valid": result.valid,
+                "checks": [
+                    {
+                        "check": c.check,
+                        "passed": c.passed,
+                        "error": c.error,
+                        "warnings": list(c.warnings),
+                    }
+                    for c in result.checks
+                ],
+                "requires_approval": result.requires_approval,
+            }
+        except Exception as e:
+            return {
+                "valid": False,
+                "checks": [
+                    {
+                        "check": "unexpected",
+                        "passed": False,
+                        "error": {"message": str(e)},
+                        "warnings": [],
+                    }
+                ],
+                "requires_approval": False,
+            }
 
     async def handle_call(
         self,
@@ -255,12 +318,36 @@ class ExecutionRouter:
     ) -> tuple[list[dict[str, str]], bool, str | None]:
         """Non-streaming execution via executor.call_async()."""
         try:
-            if self._call_async_accepts_context:
-                result = await self._executor.call_async(tool_name, arguments, context)
+            if self._trace:
+                # Use call_async_with_trace() to capture pipeline trace
+                if self._call_async_accepts_context:
+                    result, pipeline_trace = await self._executor.call_async_with_trace(tool_name, arguments, context)
+                else:
+                    result, pipeline_trace = await self._executor.call_async_with_trace(tool_name, arguments)
+                trace_dict = {
+                    "strategy_name": pipeline_trace.strategy_name,
+                    "total_duration_ms": pipeline_trace.total_duration_ms,
+                    "steps": [
+                        {
+                            "name": s.name,
+                            "duration_ms": s.duration_ms,
+                            "skipped": s.skipped,
+                            "skip_reason": getattr(s, "skip_reason", None),
+                        }
+                        for s in pipeline_trace.steps
+                    ],
+                }
             else:
-                result = await self._executor.call_async(tool_name, arguments)
+                if self._call_async_accepts_context:
+                    result = await self._executor.call_async(tool_name, arguments, context)
+                else:
+                    result = await self._executor.call_async(tool_name, arguments)
+                trace_dict = None
+            result = self._maybe_redact(tool_name, result)
             text_output = self._format_result(result)
             content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
+            if trace_dict is not None:
+                content.append({"type": "text", "text": json.dumps(trace_dict, default=str)})
             trace_id = context.trace_id if context is not None else None
             return (content, False, trace_id)
         except Exception as error:
@@ -308,6 +395,7 @@ class ExecutionRouter:
                 accumulated = _deep_merge(accumulated, chunk)
                 chunk_index += 1
 
+            accumulated = self._maybe_redact(tool_name, accumulated)
             text_output = self._format_result(accumulated)
             content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
             trace_id = context.trace_id if context is not None else None

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-04-06
+
+### Added
+
+- **Pipeline Strategy Selection** (F-036) — `serve(strategy=)` parameter and CLI `--strategy` flag with 5 presets: standard, internal, testing, performance, minimal.
+- **Tool Output Redaction** (F-038) — `serve(redact_output=True)` applies `redact_sensitive()` to tool output before MCP serialization. Enabled by default.
+- **Pipeline Observability** (F-037) — `serve(trace=True)` enables `call_async_with_trace()` for per-step pipeline timing in responses.
+- **Tool Preflight Validation** (F-039) — `ExecutionRouter.validate_tool()` for dry-run validation via `Executor.validate()`.
+- **YAML Pipeline Configuration** (F-040) — Config Bus `mcp.pipeline` section for declarative pipeline customization.
+- **Annotation Metadata Passthrough** (F-041) — `ModuleAnnotations.extra` keys prefixed with `mcp_` flow to tool descriptions.
+- **4 new error mappings** — `ConfigEnvMapConflictError`, `PipelineAbortError`, `StepNotFoundError`, `VersionIncompatibleError`.
+- **RegistryListener wired to `serve(dynamic=True)`** — dynamic tool registration now operational.
+
+### Changed
+
+- **Dependency bump**: `apcore >= 0.17.1` (was `>= 0.15.1`).
+- Pipeline v2 alignment: 11-step pipeline, `call_chain_guard` rename, middleware before input validation.
+
+---
+
 ## [0.12.0] - 2026-03-31
 
 ### Added
