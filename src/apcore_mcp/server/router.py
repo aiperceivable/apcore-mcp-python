@@ -254,6 +254,18 @@ class ExecutionRouter:
         identity = extra.get("identity") if extra is not None else None
         context = Context.create(data=context_data, identity=identity)
 
+        version_hint: str | None = None
+        if extra is not None:
+            version_hint = extra.get("version_hint")
+            if version_hint is None:
+                meta = extra.get("_meta")
+                if isinstance(meta, dict):
+                    apcore_meta = meta.get("apcore")
+                    if isinstance(apcore_meta, dict):
+                        raw = apcore_meta.get("version")
+                        if isinstance(raw, str):
+                            version_hint = raw
+
         # Pre-execution validation
         if self._validate_inputs:
             try:
@@ -291,10 +303,11 @@ class ExecutionRouter:
                 progress_token,  # type: ignore[arg-type]
                 send_notification,  # type: ignore[arg-type]
                 context=context,
+                version_hint=version_hint,
             )
 
         # Non-streaming path
-        return await self._handle_call_async(tool_name, arguments, context=context)
+        return await self._handle_call_async(tool_name, arguments, context=context, version_hint=version_hint)
 
     @staticmethod
     def _build_error_text(error_info: dict[str, Any]) -> str:
@@ -315,11 +328,13 @@ class ExecutionRouter:
         tool_name: str,
         arguments: dict[str, Any],
         context: Any | None = None,
+        version_hint: str | None = None,
     ) -> tuple[list[dict[str, str]], bool, str | None]:
         """Non-streaming execution via executor.call_async()."""
         try:
             if self._trace:
-                # Use call_async_with_trace() to capture pipeline trace
+                # TODO(apcore>=0.19): plumb version_hint through call_async_with_trace
+                # (current signature only accepts strategy).
                 if self._call_async_accepts_context:
                     result, pipeline_trace = await self._executor.call_async_with_trace(tool_name, arguments, context)
                 else:
@@ -338,10 +353,13 @@ class ExecutionRouter:
                     ],
                 }
             else:
+                call_kwargs: dict[str, Any] = {}
+                if version_hint is not None:
+                    call_kwargs["version_hint"] = version_hint
                 if self._call_async_accepts_context:
-                    result = await self._executor.call_async(tool_name, arguments, context)
+                    result = await self._executor.call_async(tool_name, arguments, context, **call_kwargs)
                 else:
-                    result = await self._executor.call_async(tool_name, arguments)
+                    result = await self._executor.call_async(tool_name, arguments, **call_kwargs)
                 trace_dict = None
             result = self._maybe_redact(tool_name, result)
             text_output = self._format_result(result)
@@ -362,6 +380,7 @@ class ExecutionRouter:
         progress_token: str | int,
         send_notification: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
         context: Any | None = None,
+        version_hint: str | None = None,
     ) -> tuple[list[dict[str, str]], bool, str | None]:
         """Streaming execution via executor.stream().
 
@@ -369,14 +388,20 @@ class ExecutionRouter:
         ``notifications/progress`` message, accumulates via shallow
         merge, and returns the final accumulated result.
         """
+        # TODO(apcore>=0.19): streaming traces pending — Executor.stream()
+        # currently yields dict chunks only; no stream_with_trace API exists,
+        # so per-step pipeline traces cannot be attached to the stream result.
         accumulated: dict[str, Any] = {}
         chunk_index = 0
 
         try:
+            stream_kwargs: dict[str, Any] = {}
+            if version_hint is not None:
+                stream_kwargs["version_hint"] = version_hint
             if self._stream_accepts_context:
-                stream_iter = self._executor.stream(tool_name, arguments, context)
+                stream_iter = self._executor.stream(tool_name, arguments, context, **stream_kwargs)
             else:
-                stream_iter = self._executor.stream(tool_name, arguments)
+                stream_iter = self._executor.stream(tool_name, arguments, **stream_kwargs)
 
             async for chunk in stream_iter:
                 # Send progress notification for this chunk

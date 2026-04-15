@@ -26,8 +26,9 @@ _AI_INTENT_KEYS = ("x-when-to-use", "x-when-not-to-use", "x-common-mistakes", "x
 class MCPServerFactory:
     """Creates and configures MCP Server instances from apcore Registry."""
 
-    def __init__(self) -> None:
-        self._schema_converter = SchemaConverter()
+    def __init__(self, *, strict: bool = True) -> None:
+        self._strict = strict
+        self._schema_converter = SchemaConverter(strict=strict)
         self._annotation_mapper = AnnotationMapper()
         self._schema_exporter = SchemaExporter()
 
@@ -190,6 +191,11 @@ class MCPServerFactory:
 
             # Always pass session for elicitation support
             extra: dict[str, Any] = {"session": ctx.session}
+
+            if ctx.meta is not None:
+                meta_dump = ctx.meta.model_dump(exclude_none=True)
+                if meta_dump:
+                    extra["_meta"] = meta_dump
 
             # Bridge authenticated identity from ASGI middleware
             identity = auth_identity_var.get()

@@ -930,3 +930,66 @@ class TestOutputFormatter:
         content, is_error, _ = await router.handle_call("test.module", {})
         assert is_error is True
         assert called == []
+
+
+@pytest.mark.asyncio
+class TestVersionHintPassthrough:
+    """Task 2: version_hint from MCP _meta.apcore.version is forwarded to executor."""
+
+    async def test_version_hint_from_meta_apcore_version(self) -> None:
+        captured: dict[str, Any] = {}
+
+        class CapturingExecutor:
+            async def call_async(
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["module_id"] = module_id
+                captured["version_hint"] = version_hint
+                return {"ok": True}
+
+        router = ExecutionRouter(CapturingExecutor())
+        extra = {"_meta": {"apcore": {"version": "2.1.0"}}}
+        content, is_error, _ = await router.handle_call("test.module", {}, extra=extra)
+        assert is_error is False
+        assert captured["version_hint"] == "2.1.0"
+
+    async def test_version_hint_absent_when_meta_missing(self) -> None:
+        captured: dict[str, Any] = {}
+
+        class CapturingExecutor:
+            async def call_async(
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["version_hint"] = version_hint
+                return {"ok": True}
+
+        router = ExecutionRouter(CapturingExecutor())
+        await router.handle_call("test.module", {})
+        assert captured["version_hint"] is None
+
+    async def test_version_hint_explicit_extra_takes_precedence(self) -> None:
+        captured: dict[str, Any] = {}
+
+        class CapturingExecutor:
+            async def call_async(
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["version_hint"] = version_hint
+                return {"ok": True}
+
+        router = ExecutionRouter(CapturingExecutor())
+        extra = {"version_hint": "3.0.0", "_meta": {"apcore": {"version": "2.1.0"}}}
+        await router.handle_call("test.module", {}, extra=extra)
+        assert captured["version_hint"] == "3.0.0"

@@ -12,8 +12,92 @@ class TestSchemaConverter:
 
     @pytest.fixture
     def converter(self):
-        """Create a SchemaConverter instance for tests."""
-        return SchemaConverter()
+        """Create a SchemaConverter instance for tests (non-strict for legacy assertions)."""
+        return SchemaConverter(strict=False)
+
+    @pytest.fixture
+    def strict_converter(self):
+        """Create a strict-mode SchemaConverter (MCP default)."""
+        return SchemaConverter(strict=True)
+
+    def test_strict_default_is_true(self):
+        """Default SchemaConverter should be strict=True for MCP."""
+        c = SchemaConverter()
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_default",
+            description="",
+            input_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+            output_schema={},
+        )
+        result = c.convert_input_schema(descriptor)
+        assert result["additionalProperties"] is False
+
+    def test_strict_injects_root_additional_properties_false(self, strict_converter):
+        """Root object-typed schema gets additionalProperties: false."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_root",
+            description="",
+            input_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["additionalProperties"] is False
+
+    def test_strict_injects_nested_additional_properties_false(self, strict_converter):
+        """Nested object-typed subschemas also get additionalProperties: false."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_nested",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "outer": {
+                        "type": "object",
+                        "properties": {
+                            "inner": {
+                                "type": "object",
+                                "properties": {"x": {"type": "integer"}},
+                            },
+                        },
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["additionalProperties"] is False
+        assert result["properties"]["outer"]["additionalProperties"] is False
+        assert result["properties"]["outer"]["properties"]["inner"]["additionalProperties"] is False
+
+    def test_strict_preserves_user_additional_properties_true(self, strict_converter):
+        """When the module already set additionalProperties, user intent wins."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_preserve",
+            description="",
+            input_schema={
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "bag": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                        "properties": {},
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["additionalProperties"] is True
+        assert result["properties"]["bag"]["additionalProperties"] == {"type": "string"}
 
     def test_convert_simple_schema(self, converter, simple_descriptor):
         """Test that a simple schema is preserved exactly."""
@@ -314,6 +398,140 @@ class TestSchemaConverter:
             "type": "object",
             "properties": {"name": {"type": "string"}},
         }
+
+    def test_strict_nullable_object_union_type(self, strict_converter):
+        """type: ['object', 'null'] is recognized as object-like."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_nullable",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "nullable": {
+                        "type": ["object", "null"],
+                        "properties": {"x": {"type": "string"}},
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["properties"]["nullable"]["additionalProperties"] is False
+
+    def test_strict_properties_without_type(self, strict_converter):
+        """Schema with 'properties' but no 'type' gets additionalProperties: false."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_no_type",
+            description="",
+            input_schema={
+                "properties": {
+                    "nested": {
+                        "properties": {"x": {"type": "string"}},
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["additionalProperties"] is False
+        assert result["properties"]["nested"]["additionalProperties"] is False
+
+    def test_strict_does_not_mutate_enum_literal_objects(self, strict_converter):
+        """enum: [{...}] member objects must not be mutated."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_enum",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "choice": {
+                        "enum": [{"x": 1}, {"y": 2}],
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["properties"]["choice"]["enum"] == [{"x": 1}, {"y": 2}]
+        for member in result["properties"]["choice"]["enum"]:
+            assert "additionalProperties" not in member
+
+    def test_strict_does_not_mutate_const_literal_object(self, strict_converter):
+        """const: {...} must not get additionalProperties injected."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_const",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "c": {"const": {"a": 1}},
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        assert result["properties"]["c"]["const"] == {"a": 1}
+        assert "additionalProperties" not in result["properties"]["c"]["const"]
+
+    def test_strict_does_not_mutate_examples_and_default(self, strict_converter):
+        """examples: [...] and default: {...} literal objects are preserved."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_examples",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "e": {
+                        "type": "object",
+                        "properties": {"v": {"type": "string"}},
+                        "examples": [{"v": "x"}],
+                        "default": {"v": "y"},
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        e = result["properties"]["e"]
+        assert e["examples"] == [{"v": "x"}]
+        assert e["default"] == {"v": "y"}
+        assert "additionalProperties" not in e["examples"][0]
+        assert "additionalProperties" not in e["default"]
+
+    def test_strict_oneof_object_branch(self, strict_converter):
+        """oneOf: [{type:object,...}, {type:null}] — object branch strict, null untouched."""
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.strict_oneof",
+            description="",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "u": {
+                        "oneOf": [
+                            {"type": "object", "properties": {"x": {"type": "string"}}},
+                            {"type": "null"},
+                        ],
+                    },
+                },
+            },
+            output_schema={},
+        )
+        result = strict_converter.convert_input_schema(descriptor)
+        branches = result["properties"]["u"]["oneOf"]
+        assert branches[0]["additionalProperties"] is False
+        assert "additionalProperties" not in branches[1]
 
     def test_ensure_object_type_with_mismatched_type(self, converter):
         """Test schema with properties but non-object type gets corrected."""

@@ -7,6 +7,14 @@ from typing import Any
 
 _MAX_REF_DEPTH = 32
 
+# Keywords whose values are subschemas (or collections of subschemas) and
+# should be walked when injecting additionalProperties: false. Keys like
+# ``enum``, ``const``, ``examples``, ``default``, ``required`` hold literal
+# data and must NOT be recursed into.
+_SCHEMA_CHILD_DICT_KEYS = ("properties", "patternProperties", "$defs", "definitions")
+_SCHEMA_CHILD_LIST_KEYS = ("oneOf", "anyOf", "allOf", "prefixItems")
+_SCHEMA_CHILD_SCHEMA_KEYS = ("items", "not", "if", "then", "else", "contains", "propertyNames")
+
 
 class SchemaConverter:
     """Converts apcore ModuleDescriptor schemas to MCP-compatible schemas.
@@ -15,8 +23,14 @@ class SchemaConverter:
     - Empty schemas → {"type": "object", "properties": {}}
     - Schemas with $defs and $ref → inline all refs, strip $defs
     - Ensures all schemas have "type": "object" at the root level
+    - When ``strict=True`` (default), injects ``additionalProperties: false``
+      on every object-typed node that doesn't already set it.  Existing
+      user-supplied ``additionalProperties`` values are preserved.
     - Returns deep copies (doesn't modify original schemas)
     """
+
+    def __init__(self, *, strict: bool = True) -> None:
+        self._strict = strict
 
     def convert_input_schema(self, descriptor: Any) -> dict[str, Any]:
         """Convert apcore ModuleDescriptor.input_schema to MCP inputSchema.
@@ -68,7 +82,61 @@ class SchemaConverter:
         # Ensure schema has type: object
         schema = self._ensure_object_type(schema)
 
+        if self._strict:
+            self._inject_additional_properties_false(schema)
+
         return schema
+
+    def _inject_additional_properties_false(self, node: Any) -> None:
+        """Walk *node* and set ``additionalProperties: false`` on every
+        object-typed subschema that doesn't already define the key.
+        User intent wins: existing ``additionalProperties`` values (including
+        ``True``) are left untouched.
+
+        Recursion is narrowed to known subschema-bearing keywords so we do
+        NOT descend into literal-data keys like ``enum``, ``const``,
+        ``examples``, ``default``, ``required``.
+        """
+        if not isinstance(node, dict):
+            return
+
+        node_type = node.get("type")
+        type_is_object = node_type == "object" or (isinstance(node_type, list) and "object" in node_type)
+        # Treat schema as object-like when it has "properties" and no
+        # conflicting non-object scalar type.
+        has_properties = "properties" in node
+        non_object_scalar = isinstance(node_type, str) and node_type != "object"
+        is_object = type_is_object or (has_properties and not non_object_scalar)
+
+        if is_object and "additionalProperties" not in node:
+            node["additionalProperties"] = False
+
+        # Recurse only into known subschema-bearing keywords.
+        for key in _SCHEMA_CHILD_DICT_KEYS:
+            child = node.get(key)
+            if isinstance(child, dict):
+                for sub in child.values():
+                    self._inject_additional_properties_false(sub)
+
+        for key in _SCHEMA_CHILD_LIST_KEYS:
+            child = node.get(key)
+            if isinstance(child, list):
+                for item in child:
+                    self._inject_additional_properties_false(item)
+
+        for key in _SCHEMA_CHILD_SCHEMA_KEYS:
+            child = node.get(key)
+            if isinstance(child, dict):
+                self._inject_additional_properties_false(child)
+            elif isinstance(child, list):
+                # ``items`` may be a list of schemas (legacy tuple validation)
+                for item in child:
+                    self._inject_additional_properties_false(item)
+
+        # additionalProperties itself may be a schema dict.
+        ap = node.get("additionalProperties")
+        if isinstance(ap, dict):
+            self._inject_additional_properties_false(ap)
 
     def _inline_refs(
         self,
