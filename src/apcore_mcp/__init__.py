@@ -128,6 +128,8 @@ def serve(
     strategy: str | None = None,
     redact_output: bool = True,
     trace: bool = False,
+    middleware: list[object] | None = None,
+    acl: object | None = None,
 ) -> None:
     """Launch an MCP Server that exposes all apcore modules as tools.
 
@@ -168,6 +170,18 @@ def serve(
             ``apcore.redact_sensitive()``. Defaults to True.
         trace: Enable pipeline trace capture via ``call_async_with_trace()``.
             When True, trace information is appended to tool call results.
+        middleware: Optional list of apcore ``Middleware`` instances to install
+            on the Executor via ``executor.use()``. Appended to any middleware
+            declared under Config Bus key ``mcp.middleware``. Execution order
+            inside the chain is determined by ``Middleware.priority`` (higher
+            runs first; equal priorities preserve registration order), so
+            merging is additive rather than strictly pre/post.
+            Works with both new and pre-existing Executor inputs.
+        acl: Optional apcore ``ACL`` instance to install via ``executor.set_acl()``.
+            When omitted, the bridge falls back to any ACL declared under Config
+            Bus key ``mcp.acl`` (rules + default_effect). Caller-supplied ACL
+            takes precedence over Config Bus. Default behavior (no ACL) allows
+            all callers.
     """
     if not name:
         raise ValueError("name must not be empty")
@@ -195,6 +209,8 @@ def serve(
 
     # B5: F-040 — Check Config Bus for YAML pipeline configuration
     pipeline_strategy = None
+    config_middleware: list[object] = []
+    config_acl: object | None = None
     try:
         from apcore import Config, build_strategy_from_config
 
@@ -205,13 +221,40 @@ def serve(
                 pipeline_strategy = build_strategy_from_config(pipeline_config, registry=registry)
                 if strategy:
                     logger.warning("YAML pipeline config overrides strategy parameter")
-    except Exception:
-        pass  # Config Bus not available or no pipeline section
+            # Load declarative middleware from Config Bus (`mcp.middleware`).
+            mw_config = config.get("mcp.middleware")
+            if mw_config and isinstance(mw_config, list):
+                from apcore_mcp.middleware_builder import build_middleware_from_config
+
+                config_middleware = build_middleware_from_config(mw_config)
+            # Load declarative ACL from Config Bus (`mcp.acl`).
+            acl_config = config.get("mcp.acl")
+            if acl_config:
+                from apcore_mcp.acl_builder import build_acl_from_config
+
+                config_acl = build_acl_from_config(acl_config)
+    except Exception as exc:
+        logger.debug("Config Bus lookup skipped: %s", exc)
+
+    # Merge Config Bus middleware (applied first) with caller-supplied middleware.
+    combined_middleware: list[object] = list(config_middleware)
+    if middleware:
+        combined_middleware.extend(middleware)
+
+    # Caller-supplied ACL wins over Config Bus — mirrors common precedence for
+    # security-critical settings (explicit argument > environment).
+    effective_acl = acl if acl is not None else config_acl
+    if acl is not None and config_acl is not None:
+        logger.info("Caller-supplied acl argument overrides Config Bus `mcp.acl`")
 
     if strategy is not None and hasattr(registry_or_executor, "call_async"):
         logger.warning("strategy parameter ignored when Executor is provided")
     executor = resolve_executor(
-        registry_or_executor, approval_handler=approval_handler, strategy=pipeline_strategy or strategy
+        registry_or_executor,
+        approval_handler=approval_handler,
+        strategy=pipeline_strategy or strategy,
+        middleware=combined_middleware,
+        acl=effective_acl,
     )
 
     # Build output_schema_map for redaction

@@ -21,6 +21,12 @@ MCP_DEFAULTS: dict[str, object] = {
     "explorer": False,
     "explorer_prefix": "/explorer",
     "require_auth": True,
+    # Declarative middleware list — each entry is {type: str, ...kwargs}.
+    # See middleware_builder.build_middleware_from_config for supported types.
+    "middleware": [],
+    # Declarative ACL — {default_effect: "deny"|"allow", rules: [ACLRule...]}.
+    # Empty / null means "no ACL" (allow all). See acl_builder.build_acl_from_config.
+    "acl": None,
 }
 
 

@@ -63,6 +63,8 @@ class APCoreMCP:
         exempt_paths: set[str] | None = None,
         approval_handler: object | None = None,
         output_formatter: Callable[[dict], str] | None = None,
+        middleware: list[object] | None = None,
+        acl: object | None = None,
     ) -> None:
         """Create an APCoreMCP instance.
 
@@ -83,6 +85,15 @@ class APCoreMCP:
             output_formatter: Optional callable that formats dict results into
                 text for LLM consumption.  Defaults to ``None`` (raw JSON).
                 Use ``apcore_toolkit.to_markdown`` for Markdown output.
+            middleware: Optional list of apcore ``Middleware`` instances to
+                install on the Executor via ``executor.use()``. Appended to
+                any middleware declared under Config Bus key
+                ``mcp.middleware``. Chain execution order is controlled by
+                ``Middleware.priority``, not insertion order.
+            acl: Optional apcore ``ACL`` instance to install via
+                ``executor.set_acl()``. When omitted, the bridge falls back
+                to any ACL declared under Config Bus key ``mcp.acl``.
+                Caller-supplied ACL takes precedence over Config Bus.
         """
         if not name:
             raise ValueError("name must not be empty")
@@ -110,7 +121,41 @@ class APCoreMCP:
             backend = extensions_dir_or_backend
 
         self._registry = resolve_registry(backend)
-        self._executor = resolve_executor(backend, approval_handler=approval_handler)
+
+        # Load declarative middleware + ACL from Config Bus, then merge with caller args.
+        config_middleware: list[object] = []
+        config_acl: object | None = None
+        try:
+            from apcore import Config
+
+            config = Config.load() if Config is not None else None
+            if config:
+                mw_config = config.get("mcp.middleware")
+                if mw_config and isinstance(mw_config, list):
+                    from apcore_mcp.middleware_builder import build_middleware_from_config
+
+                    config_middleware = build_middleware_from_config(mw_config)
+                acl_config = config.get("mcp.acl")
+                if acl_config:
+                    from apcore_mcp.acl_builder import build_acl_from_config
+
+                    config_acl = build_acl_from_config(acl_config)
+        except Exception as exc:
+            logger.debug("Config Bus lookup skipped: %s", exc)
+
+        combined_middleware: list[object] = list(config_middleware)
+        if middleware:
+            combined_middleware.extend(middleware)
+
+        # Caller-supplied ACL wins over Config Bus.
+        effective_acl = acl if acl is not None else config_acl
+
+        self._executor = resolve_executor(
+            backend,
+            approval_handler=approval_handler,
+            middleware=combined_middleware,
+            acl=effective_acl,
+        )
         self._name = name
         self._version = version
         self._tags = tags
