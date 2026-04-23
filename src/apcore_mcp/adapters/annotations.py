@@ -12,7 +12,10 @@ DEFAULT_ANNOTATIONS = {
     "open_world": True,
     "streaming": False,
     "cacheable": False,
+    "cache_ttl": 0,
+    "cache_key_fields": None,
     "paginated": False,
+    "pagination_style": "cursor",
 }
 
 
@@ -97,8 +100,17 @@ class AnnotationMapper:
             parts.append(f"streaming={str(getattr(annotations, 'streaming', False)).lower()}")
         if getattr(annotations, "cacheable", False) != DEFAULT_ANNOTATIONS["cacheable"]:
             parts.append(f"cacheable={str(getattr(annotations, 'cacheable', False)).lower()}")
+        cache_ttl = getattr(annotations, "cache_ttl", DEFAULT_ANNOTATIONS["cache_ttl"])
+        if cache_ttl != DEFAULT_ANNOTATIONS["cache_ttl"]:
+            parts.append(f"cache_ttl={cache_ttl}")
+        cache_key_fields = getattr(annotations, "cache_key_fields", DEFAULT_ANNOTATIONS["cache_key_fields"])
+        if cache_key_fields != DEFAULT_ANNOTATIONS["cache_key_fields"] and cache_key_fields:
+            parts.append(f"cache_key_fields=[{','.join(cache_key_fields)}]")
         if getattr(annotations, "paginated", False) != DEFAULT_ANNOTATIONS["paginated"]:
             parts.append(f"paginated={str(getattr(annotations, 'paginated', False)).lower()}")
+        pagination_style = getattr(annotations, "pagination_style", DEFAULT_ANNOTATIONS["pagination_style"])
+        if pagination_style != DEFAULT_ANNOTATIONS["pagination_style"]:
+            parts.append(f"pagination_style={pagination_style}")
 
         sections: list[str] = []
         if warnings:

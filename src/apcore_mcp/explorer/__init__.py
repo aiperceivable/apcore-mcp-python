@@ -7,11 +7,13 @@ HTML rendering to the external library while bridging apcore authentication.
 from __future__ import annotations
 
 import contextlib
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from mcp_embedded_ui import create_mount
 from starlette.requests import Request
-from starlette.routing import Mount
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 from apcore_mcp.auth.middleware import auth_identity_var, extract_headers
 
@@ -84,3 +86,46 @@ def create_explorer_mount(
         project_name=project_name,
         project_url=project_url,
     )
+
+
+def _as_jsonable(obj: Any) -> Any:
+    """Recursively convert dataclasses to dicts for JSON serialization."""
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {k: _as_jsonable(v) for k, v in asdict(obj).items()}
+    if isinstance(obj, list):
+        return [_as_jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _as_jsonable(v) for k, v in obj.items()}
+    return obj
+
+
+def create_usage_routes(collector: Any, *, prefix: str = "/explorer") -> list[Route]:
+    """Build JSON usage endpoints backed by an apcore ``UsageCollector``.
+
+    Routes (mounted at ``{prefix}/api``):
+    - ``GET {prefix}/api/usage?period=24h`` → list of :class:`ModuleUsageSummary`
+    - ``GET {prefix}/api/usage/{module_id}?period=24h`` → :class:`ModuleUsageDetail`
+    """
+    base = prefix.rstrip("/") + "/api/usage"
+
+    async def _summary(request: Request) -> JSONResponse:
+        period = request.query_params.get("period", "24h")
+        try:
+            summaries = collector.get_summary(period=period)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({"period": period, "modules": _as_jsonable(summaries)})
+
+    async def _detail(request: Request) -> JSONResponse:
+        module_id = request.path_params["module_id"]
+        period = request.query_params.get("period", "24h")
+        try:
+            detail = collector.get_module(module_id, period=period)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(_as_jsonable(detail))
+
+    return [
+        Route(base, endpoint=_summary, methods=["GET"]),
+        Route(base + "/{module_id:path}", endpoint=_detail, methods=["GET"]),
+    ]

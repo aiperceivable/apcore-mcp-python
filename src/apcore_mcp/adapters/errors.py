@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from apcore.cancel import ExecutionCancelledError
+from apcore.errors import (
+    DependencyNotFoundError,
+    DependencyVersionMismatchError,
+    ModuleError,
+    TaskLimitExceededError,
+)
 
 from apcore_mcp.constants import ERROR_CODES
 
@@ -45,8 +51,36 @@ class ErrorMapper:
                 "retryable": True,
             }
 
-        # Check if it's an apcore ModuleError by checking for expected attributes
-        if hasattr(error, "code") and hasattr(error, "message") and hasattr(error, "details"):
+        # Prefer isinstance dispatch for apcore 0.19 error classes so cross-language
+        # error propagation stays stable even if `.code` drift occurs upstream.
+        if isinstance(error, TaskLimitExceededError):
+            return {
+                "is_error": True,
+                "error_type": ERROR_CODES["TASK_LIMIT_EXCEEDED"],
+                "message": getattr(error, "message", str(error)),
+                "details": getattr(error, "details", None),
+                "retryable": True,
+            }
+        if isinstance(error, DependencyNotFoundError):
+            return {
+                "is_error": True,
+                "error_type": ERROR_CODES["DEPENDENCY_NOT_FOUND"],
+                "message": getattr(error, "message", str(error)),
+                "details": getattr(error, "details", None),
+            }
+        if isinstance(error, DependencyVersionMismatchError):
+            return {
+                "is_error": True,
+                "error_type": ERROR_CODES["DEPENDENCY_VERSION_MISMATCH"],
+                "message": getattr(error, "message", str(error)),
+                "details": getattr(error, "details", None),
+            }
+
+        # Check if it's an apcore ModuleError by isinstance (fast path for
+        # known hierarchy) or structural duck-typing (fallback for compatibility).
+        if isinstance(error, ModuleError) or (
+            hasattr(error, "code") and hasattr(error, "message") and hasattr(error, "details")
+        ):
             return self._handle_apcore_error(error)
 
         # Unknown exception - sanitize completely
@@ -182,6 +216,18 @@ class ErrorMapper:
                 "error_type": code,
                 "message": f"Version incompatible: {message}",
                 "details": details,
+            }
+            self._attach_ai_guidance(error, result)
+            return result
+
+        # apcore 0.19.0: TaskLimitExceededError is retryable per changelog.
+        if code == ERROR_CODES.get("TASK_LIMIT_EXCEEDED"):
+            result = {
+                "is_error": True,
+                "error_type": code,
+                "message": message,
+                "details": details,
+                "retryable": True,
             }
             self._attach_ai_guidance(error, result)
             return result

@@ -16,13 +16,7 @@ import pytest
 
 from apcore_mcp.acl_builder import build_acl_from_config
 
-_FIXTURE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "apcore-mcp"
-    / "conformance"
-    / "fixtures"
-    / "acl_config.json"
-)
+_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "apcore-mcp" / "conformance" / "fixtures" / "acl_config.json"
 
 
 def _load_fixture() -> dict:
@@ -52,21 +46,14 @@ def test_conformance_success_case(case: dict):
     assert result is not None, f"{case['id']}: expected ACL, got None"
     # Access the rule count via the documented `rules()` accessor or private fallback.
     rules = getattr(result, "rules", None)
-    if callable(rules):
-        rule_list = rules()
-    else:
-        rule_list = getattr(result, "_rules", [])
+    rule_list = rules() if callable(rules) else getattr(result, "_rules", [])
     assert len(rule_list) == expected["rule_count"], (
-        f"{case['id']}: rule_count mismatch — got {len(rule_list)}, "
-        f"expected {expected['rule_count']}"
+        f"{case['id']}: rule_count mismatch — got {len(rule_list)}, " f"expected {expected['rule_count']}"
     )
     # default_effect accessor is a private attribute in Python; check both.
-    default_effect = getattr(result, "default_effect", None) or getattr(
-        result, "_default_effect", None
-    )
+    default_effect = getattr(result, "default_effect", None) or getattr(result, "_default_effect", None)
     assert default_effect == expected["default_effect"], (
-        f"{case['id']}: default_effect mismatch — got {default_effect!r}, "
-        f"expected {expected['default_effect']!r}"
+        f"{case['id']}: default_effect mismatch — got {default_effect!r}, " f"expected {expected['default_effect']!r}"
     )
 
 
@@ -84,6 +71,5 @@ def test_conformance_error_case(case: dict):
     with pytest.raises(ValueError) as exc_info:
         build_acl_from_config(case["input"])
     assert case["expected_error_substring"] in str(exc_info.value), (
-        f"{case['id']}: error message {exc_info.value!r} missing substring "
-        f"{case['expected_error_substring']!r}"
+        f"{case['id']}: error message {exc_info.value!r} missing substring " f"{case['expected_error_substring']!r}"
     )

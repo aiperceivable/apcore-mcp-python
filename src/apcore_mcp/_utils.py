@@ -54,17 +54,13 @@ def resolve_executor(
 
     if middleware:
         if not hasattr(executor, "use"):
-            raise RuntimeError(
-                "Executor does not support .use() — middleware parameter requires apcore>=0.18"
-            )
+            raise RuntimeError("Executor does not support .use() — middleware parameter requires apcore>=0.18")
         for mw in middleware:
             executor.use(mw)
 
     if acl is not None:
         if not hasattr(executor, "set_acl"):
-            raise RuntimeError(
-                "Executor does not support .set_acl() — acl parameter requires apcore>=0.18"
-            )
+            raise RuntimeError("Executor does not support .set_acl() — acl parameter requires apcore>=0.18")
         executor.set_acl(acl)
 
     return executor

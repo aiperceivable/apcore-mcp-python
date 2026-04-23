@@ -87,11 +87,15 @@ class MCPServer:
 
     def _run(self) -> None:
         """Internal: run the server event loop."""
+        from importlib.metadata import PackageNotFoundError
         from importlib.metadata import version as _pkg_version
 
         from apcore_mcp._utils import resolve_executor, resolve_registry
 
-        __version__ = _pkg_version("apcore-mcp")
+        try:
+            __version__ = _pkg_version("apcore-mcp")
+        except PackageNotFoundError:
+            __version__ = "unknown"
         from apcore_mcp.server.factory import MCPServerFactory
         from apcore_mcp.server.router import ExecutionRouter
         from apcore_mcp.server.transport import TransportManager

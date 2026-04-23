@@ -16,6 +16,7 @@ from pydantic import AnyUrl
 from apcore_mcp.adapters.annotations import AnnotationMapper
 from apcore_mcp.adapters.schema import SchemaConverter
 from apcore_mcp.auth.middleware import auth_identity_var
+from apcore_mcp.server.async_task_bridge import RESERVED_PREFIX, AsyncTaskBridge
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,9 @@ class MCPServerFactory:
         Returns:
             An MCP Tool object ready for registration.
         """
+        # Reject reserved-prefix ids so user modules cannot shadow async meta-tools.
+        if getattr(descriptor, "module_id", "").startswith(RESERVED_PREFIX):
+            raise ValueError(f"Module id {descriptor.module_id!r} uses reserved prefix {RESERVED_PREFIX!r}")
         input_schema = self._schema_converter.convert_input_schema(descriptor)
 
         # NOTE: Python uses SchemaExporter.export_mcp() for annotation mapping,
@@ -163,6 +167,9 @@ class MCPServerFactory:
         server: Server,
         tools: list[mcp_types.Tool],
         router: Any,
+        *,
+        async_bridge: AsyncTaskBridge | None = None,
+        descriptor_lookup: Any = None,
     ) -> None:
         """Register list_tools and call_tool handlers on the Server.
 
@@ -176,11 +183,22 @@ class MCPServerFactory:
             tools: List of Tool objects to expose via list_tools.
             router: A router with an async handle_call(name, arguments, extra)
                     method that returns (content_list, is_error, trace_id).
+            async_bridge: Optional :class:`AsyncTaskBridge`. When present,
+                four ``__apcore_task_*`` meta-tools are appended to ``tools``
+                and async-hinted modules are routed through the bridge.
+            descriptor_lookup: Optional callable ``(module_id) -> descriptor``
+                used by the handler to detect async-hinted modules and feed
+                the bridge's submit meta-tool.
         """
+        # Meta-tools are surfaced alongside regular tools so MCP clients can
+        # discover the submit/status/cancel/list API via list_tools.
+        combined_tools: list[mcp_types.Tool] = list(tools)
+        if async_bridge is not None:
+            combined_tools.extend(async_bridge.build_meta_tools())
 
         @server.list_tools()
         async def handle_list_tools() -> list[mcp_types.Tool]:
-            return list(tools)
+            return list(combined_tools)
 
         @server.call_tool()
         async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextContent]:
@@ -215,15 +233,65 @@ class MCPServerFactory:
                 extra["send_notification"] = send_notification
                 extra["progress_token"] = progress_token
 
-            content, is_error, _trace_id = await router.handle_call(name, arguments or {}, extra=extra)
+            # Meta-tool route: handled entirely by the async bridge.
+            if async_bridge is not None and async_bridge.is_meta_tool(name):
+                content, is_error, _trace_id = await async_bridge.handle_meta_tool(
+                    name,
+                    arguments or {},
+                    resolve_descriptor=descriptor_lookup,
+                    router_extra=extra,
+                )
+            # Async-hint route: submit to AsyncTaskManager, return task envelope.
+            elif (
+                async_bridge is not None
+                and descriptor_lookup is not None
+                and async_bridge.is_async_module(descriptor_lookup(name))
+            ):
+                from apcore import Context
+                from apcore.trace_context import TraceContext, TraceParent
+
+                trace_parent: TraceParent | None = None
+                meta_in = extra.get("_meta") if isinstance(extra.get("_meta"), dict) else None
+                if meta_in is not None:
+                    raw_tp = meta_in.get("traceparent")
+                    if isinstance(raw_tp, str):
+                        trace_parent = TraceContext.extract({"traceparent": raw_tp})
+                submit_ctx = Context.create(data={}, identity=identity, trace_parent=trace_parent)
+                try:
+                    envelope = await async_bridge.submit(
+                        name,
+                        arguments or {},
+                        submit_ctx,
+                        progress_token=extra.get("progress_token"),
+                        send_notification=extra.get("send_notification"),
+                    )
+                    import json as _json
+
+                    content = [{"type": "text", "text": _json.dumps(envelope)}]
+                    is_error = False
+                except Exception as exc:
+                    logger.error("async submit failed for %s: %s", name, exc)
+                    info = async_bridge._error_mapper.to_mcp_error(exc)
+                    content = [{"type": "text", "text": info["message"]}]
+                    is_error = True
+            else:
+                content, is_error, _trace_id = await router.handle_call(name, arguments or {}, extra=extra)
 
             # NOTE: The MCP SDK decorator always wraps our return in
             # CallToolResult(isError=False). Setting isError=True or _meta
             # is not supported by the current SDK decorator. For errors,
             # we raise so the SDK sets isError=True on the CallToolResult.
-            text_contents = [
-                mcp_types.TextContent(type="text", text=item["text"]) for item in content if item.get("type") == "text"
-            ]
+            # Per-content `meta` (TextContent-level _meta) is allowed and is
+            # used to carry W3C `traceparent` back to the client.
+            text_contents: list[mcp_types.TextContent] = []
+            for item in content:
+                if item.get("type") != "text":
+                    continue
+                item_meta = item.get("_meta")
+                if isinstance(item_meta, dict) and item_meta:
+                    text_contents.append(mcp_types.TextContent(type="text", text=item["text"], meta=item_meta))
+                else:
+                    text_contents.append(mcp_types.TextContent(type="text", text=item["text"]))
             if is_error:
                 raise Exception(text_contents[0].text if text_contents else "Unknown error")
             return text_contents

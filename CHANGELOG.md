@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-04-23
+
+### Changed
+
+- **Dependency bump**: `apcore >= 0.19.0` (was `>= 0.18.0`).
+- **New dependency**: `apcore-toolkit >= 0.5.0` — picks up the `ScannedModule.display` field and the `BindingLoader` pure-data loader (not wired in apcore-mcp; this project does not load binding YAML directly).
+- `ExecutionRouter.handle_call` response `content` item type widened from `list[dict[str, str]]` to `list[dict[str, Any]]` to carry the optional `_meta` field. The factory translates this to MCP `TextContent.meta` on wire.
+- `MCPServerFactory.register_handlers` gains optional `async_bridge` and `descriptor_lookup` kwargs. Backward-compatible: when omitted, behavior is unchanged.
+
+### Added
+
+- **W3C Trace Context propagation** — `ExecutionRouter` now parses `_meta.traceparent` on inbound `tools/call` requests and seeds the apcore `Context` with the extracted `TraceParent`. Responses carry `_meta.traceparent` (per `TextContent.meta`) built from `TraceContext.inject(context)`, letting MCP clients correlate trace chains across module boundaries. Relies on apcore 0.19's strict validation in `Context.create(trace_parent=...)` (all-zero/all-f trace ids are regenerated with a WARN).
+- **Async Task Bridge** (F-043) — new `apcore_mcp.server.async_task_bridge.AsyncTaskBridge` wraps apcore's `AsyncTaskManager`. Modules whose descriptor carries `metadata.async == True` or `annotations.extra["mcp_async"] == "true"` are routed to `AsyncTaskManager.submit()` and return an immediate `{"task_id", "status": "pending"}` envelope. Four reserved MCP meta-tools are registered: `__apcore_task_submit`, `__apcore_task_status`, `__apcore_task_cancel`, `__apcore_task_list`. Progress fan-out is available via `_meta.progressToken` (bound per task). `MCPServerFactory.build_tool` now rejects any module whose id starts with `__apcore_`. Enable/disable via `APCoreMCP(async_tasks=...)` or `serve(async_tasks=...)` (default on). Tuning knobs: `async_max_concurrent`, `async_max_tasks`.
+- **Observability auto-wiring** — `serve(observability=True)` / `APCoreMCP(observability=True)` instantiate `apcore.observability.MetricsCollector` + `MetricsMiddleware` and `UsageCollector` + `UsageMiddleware` on the Executor and expose `/{explorer_prefix}/api/usage` (and `/api/usage/{module_id}`) returning `ModuleUsageSummary` / `ModuleUsageDetail` JSON. The `metrics_collector=True` sentinel auto-provisions only the metrics middleware (no usage tracking). A user-supplied `MetricsExporter` object continues to work unchanged (back-compat).
+- **`--observability` CLI flag** — toggles metrics + usage middleware and usage routes.
+- **isinstance-based error dispatch** in `adapters/errors.py` — `TaskLimitExceededError`, `DependencyNotFoundError`, and `DependencyVersionMismatchError` are dispatched via `isinstance` checks against the apcore 0.19 error classes, not duck-typed codes.
+- **Expanded `ModuleAnnotations` surfacing** in `AnnotationMapper.to_description_suffix`: `cache_ttl`, `cache_key_fields`, and `pagination_style` now appear in the description annotation block when non-default. Aligns with apcore 0.19's 12-field `ModuleAnnotations`.
+- **`DEFAULT_ANNOTATIONS`** in `adapters/annotations.py` extended with `cache_ttl=0`, `cache_key_fields=None`, and `pagination_style="cursor"` to match apcore 0.19 defaults.
+- **New error codes** in `constants.ERROR_CODES` and `ErrorMapper`:
+  - `DEPENDENCY_NOT_FOUND` — raised by `resolve_dependencies` for missing required deps (replaces prior `ModuleLoadError` path per PROTOCOL_SPEC §5.15.2).
+  - `DEPENDENCY_VERSION_MISMATCH` — raised when a declared `version` constraint is unsatisfied.
+  - `TASK_LIMIT_EXCEEDED` — raised by `AsyncTaskManager.submit` at capacity. Mapped with `retryable: True`.
+  - `VERSION_CONSTRAINT_INVALID` — raised on malformed version constraint strings.
+  - `BINDING_SCHEMA_INFERENCE_FAILED` — replaces the deprecated `BINDING_SCHEMA_MISSING` code for auto-schema inference failures.
+  - `BINDING_SCHEMA_MODE_CONFLICT`, `BINDING_STRICT_SCHEMA_INCOMPATIBLE`, `BINDING_POLICY_VIOLATION` — parse-time binding validation errors per DECLARATIVE_CONFIG_SPEC.
+
+### Notes
+
+- The `display` overlay resolution in `server/factory.py` already consumes `metadata["display"]["mcp"]` (alias / description / guidance) as produced by `DisplayResolver`; no changes needed for the 0.19 canonical `DisplayOverlay` shape.
+- The apcore-toolkit `BindingLoader` was not wired in: apcore-mcp does not load `.binding.yaml` files directly. Registry-bound loads continue to flow through apcore's own `BindingLoader` inside the upstream SDK.
+- Async task bridge is in-memory only; tasks do not survive server restart (matches apcore semantics).
+- Meta-tool names use the reserved `__apcore_` prefix; user-registered modules with this prefix are now rejected at `build_tool` time to prevent shadowing.
+- Usage endpoints are only mounted when Explorer is enabled; headless stdio deployments continue to have no HTTP surface.
+
+---
+
 ## [0.13.0] - 2026-04-06
 
 ### Added

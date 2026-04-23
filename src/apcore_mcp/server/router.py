@@ -9,6 +9,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from apcore import Context
+from apcore.trace_context import TraceContext, TraceParent
 
 from apcore_mcp.adapters.errors import ErrorMapper
 from apcore_mcp.helpers import MCP_ELICIT_KEY, MCP_PROGRESS_KEY
@@ -173,7 +174,7 @@ class ExecutionRouter:
         tool_name: str,
         arguments: dict[str, Any],
         extra: dict[str, Any] | None = None,
-    ) -> tuple[list[dict[str, str]], bool, str | None]:
+    ) -> tuple[list[dict[str, Any]], bool, str | None]:
         """Execute a tool call through the Executor pipeline.
 
         Args:
@@ -252,7 +253,21 @@ class ExecutionRouter:
             context_data[MCP_ELICIT_KEY] = _elicit_callback
 
         identity = extra.get("identity") if extra is not None else None
-        context = Context.create(data=context_data, identity=identity)
+
+        # Inbound W3C Trace Context: parse `_meta.traceparent` (per MCP _meta
+        # passthrough) and seed the apcore Context so downstream modules
+        # inherit the trace chain. Context.create() in apcore 0.19 handles
+        # strict validation (all-zero/all-f → regen with WARN), so we do not
+        # duplicate validation here.
+        trace_parent: TraceParent | None = None
+        if extra is not None:
+            meta = extra.get("_meta")
+            if isinstance(meta, dict):
+                raw_tp = meta.get("traceparent")
+                if isinstance(raw_tp, str):
+                    trace_parent = TraceContext.extract({"traceparent": raw_tp})
+
+        context = Context.create(data=context_data, identity=identity, trace_parent=trace_parent)
 
         version_hint: str | None = None
         if extra is not None:
@@ -310,6 +325,29 @@ class ExecutionRouter:
         return await self._handle_call_async(tool_name, arguments, context=context, version_hint=version_hint)
 
     @staticmethod
+    def _attach_traceparent(content: list[dict[str, Any]], context: Any | None) -> None:
+        """Attach `_meta.traceparent` to the first content item for W3C trace propagation.
+
+        MCP clients can correlate traces across module boundaries. Failures
+        (malformed context, empty trace_id) are swallowed so response
+        delivery is never blocked by trace metadata.
+        """
+        if context is None or not content:
+            return
+        try:
+            headers = TraceContext.inject(context)
+        except Exception:
+            return
+        tp = headers.get("traceparent")
+        if not tp:
+            return
+        meta = content[0].get("_meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["traceparent"] = tp
+        content[0]["_meta"] = meta
+
+    @staticmethod
     def _build_error_text(error_info: dict[str, Any]) -> str:
         """Build error text content, appending AI guidance fields as structured JSON when present.
 
@@ -329,7 +367,7 @@ class ExecutionRouter:
         arguments: dict[str, Any],
         context: Any | None = None,
         version_hint: str | None = None,
-    ) -> tuple[list[dict[str, str]], bool, str | None]:
+    ) -> tuple[list[dict[str, Any]], bool, str | None]:
         """Non-streaming execution via executor.call_async()."""
         try:
             if self._trace:
@@ -363,7 +401,8 @@ class ExecutionRouter:
                 trace_dict = None
             result = self._maybe_redact(tool_name, result)
             text_output = self._format_result(result)
-            content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
+            content: list[dict[str, Any]] = [{"type": "text", "text": text_output}]
+            self._attach_traceparent(content, context)
             if trace_dict is not None:
                 content.append({"type": "text", "text": json.dumps(trace_dict, default=str)})
             trace_id = context.trace_id if context is not None else None
@@ -381,7 +420,7 @@ class ExecutionRouter:
         send_notification: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
         context: Any | None = None,
         version_hint: str | None = None,
-    ) -> tuple[list[dict[str, str]], bool, str | None]:
+    ) -> tuple[list[dict[str, Any]], bool, str | None]:
         """Streaming execution via executor.stream().
 
         Iterates the async generator, sends each chunk as a
@@ -422,7 +461,8 @@ class ExecutionRouter:
 
             accumulated = self._maybe_redact(tool_name, accumulated)
             text_output = self._format_result(accumulated)
-            content: list[dict[str, str]] = [{"type": "text", "text": text_output}]
+            content: list[dict[str, Any]] = [{"type": "text", "text": text_output}]
+            self._attach_traceparent(content, context)
             trace_id = context.trace_id if context is not None else None
             return (content, False, trace_id)
         except Exception as error:

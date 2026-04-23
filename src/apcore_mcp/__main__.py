@@ -127,6 +127,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated paths exempt from auth (default: /health,/metrics).",
     )
 
+    # Observability
+    parser.add_argument(
+        "--observability",
+        action="store_true",
+        default=False,
+        help="Enable MetricsMiddleware + UsageMiddleware and expose /metrics + " "/<explorer>/api/usage endpoints.",
+    )
+
     # Strategy option
     parser.add_argument(
         "--strategy",
@@ -273,6 +281,7 @@ def main() -> None:
             exempt_paths=exempt_paths_set,
             approval_handler=approval_handler,
             strategy=args.strategy,
+            observability=args.observability,
         )
     except Exception:
         logger.exception("Server startup failed.")

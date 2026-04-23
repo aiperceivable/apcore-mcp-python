@@ -57,7 +57,7 @@ class APCoreMCP:
         prefix: str | None = None,
         log_level: str | None = None,
         validate_inputs: bool = False,
-        metrics_collector: MetricsExporter | None = None,
+        metrics_collector: MetricsExporter | bool | None = None,
         authenticator: Authenticator | None = None,
         require_auth: bool = True,
         exempt_paths: set[str] | None = None,
@@ -65,6 +65,10 @@ class APCoreMCP:
         output_formatter: Callable[[dict], str] | None = None,
         middleware: list[object] | None = None,
         acl: object | None = None,
+        observability: bool = False,
+        async_tasks: bool = True,
+        async_max_concurrent: int = 10,
+        async_max_tasks: int = 1000,
     ) -> None:
         """Create an APCoreMCP instance.
 
@@ -156,15 +160,43 @@ class APCoreMCP:
             middleware=combined_middleware,
             acl=effective_acl,
         )
+
+        # Observability: auto-install MetricsMiddleware + UsageMiddleware when requested.
+        # ``metrics_collector`` accepts a pre-built MetricsExporter (back-compat) or the
+        # sentinel ``True``/``observability=True`` to auto-provision defaults.
+        self._usage_collector: Any = None
+        resolved_metrics: Any = metrics_collector
+        if observability or metrics_collector is True:
+            from apcore.observability import (
+                MetricsCollector,
+                MetricsMiddleware,
+                UsageCollector,
+                UsageMiddleware,
+            )
+
+            # user may supply both collector and observability flag; preserve their object
+            mc = MetricsCollector() if metrics_collector is True or metrics_collector is None else metrics_collector
+            resolved_metrics = mc
+            if hasattr(self._executor, "use"):
+                self._executor.use(MetricsMiddleware(mc))
+                if observability:
+                    uc = UsageCollector()
+                    self._executor.use(UsageMiddleware(uc))
+                    self._usage_collector = uc
+
         self._name = name
         self._version = version
         self._tags = tags
         self._prefix = prefix
         self._validate_inputs = validate_inputs
-        self._metrics_collector = metrics_collector
+        self._metrics_collector = resolved_metrics
         self._authenticator = authenticator
         self._require_auth = require_auth
         self._exempt_paths = exempt_paths
+        self._async_tasks = async_tasks
+        self._async_max_concurrent = async_max_concurrent
+        self._async_max_tasks = async_max_tasks
+        self._async_bridge: Any = None
 
         self._output_formatter = output_formatter
 
@@ -189,11 +221,18 @@ class APCoreMCP:
         Returns:
             Tuple of (server, router, tools, init_options, version).
         """
-        from apcore_mcp._version import VERSION
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _pkg_version
+
+        from apcore_mcp.server.async_task_bridge import AsyncTaskBridge
         from apcore_mcp.server.factory import MCPServerFactory
         from apcore_mcp.server.router import ExecutionRouter
 
-        version = self._version or VERSION
+        try:
+            pkg_version = _pkg_version("apcore-mcp")
+        except PackageNotFoundError:
+            pkg_version = "unknown"
+        version = self._version or pkg_version
 
         factory = MCPServerFactory()
         server = factory.create_server(name=self._name, version=version)
@@ -203,7 +242,27 @@ class APCoreMCP:
             validate_inputs=self._validate_inputs,
             output_formatter=self._output_formatter,
         )
-        factory.register_handlers(server, tools, router)
+
+        async_bridge: AsyncTaskBridge | None = None
+        if self._async_tasks:
+            from apcore.async_task import AsyncTaskManager
+
+            mgr = AsyncTaskManager(
+                self._executor,
+                max_concurrent=self._async_max_concurrent,
+                max_tasks=self._async_max_tasks,
+            )
+            async_bridge = AsyncTaskBridge(mgr)
+            self._async_bridge = async_bridge
+
+        descriptor_lookup = self._registry.get_definition if self._async_tasks else None
+        factory.register_handlers(
+            server,
+            tools,
+            router,
+            async_bridge=async_bridge,
+            descriptor_lookup=descriptor_lookup,
+        )
         factory.register_resource_handlers(server, self._registry)
         init_options = factory.build_init_options(server, name=self._name, version=version)
 

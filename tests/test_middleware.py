@@ -9,7 +9,6 @@ import pytest
 from apcore_mcp._utils import resolve_executor
 from apcore_mcp.middleware_builder import build_middleware_from_config
 
-
 # ---------------------------------------------------------------------------
 # build_middleware_from_config — unit tests
 # ---------------------------------------------------------------------------
@@ -30,9 +29,7 @@ def test_build_retry_middleware_with_defaults():
 def test_build_retry_middleware_with_custom_config():
     from apcore import RetryMiddleware
 
-    result = build_middleware_from_config(
-        [{"type": "retry", "max_retries": 5, "base_delay_ms": 50}]
-    )
+    result = build_middleware_from_config([{"type": "retry", "max_retries": 5, "base_delay_ms": 50}])
     assert len(result) == 1
     assert isinstance(result[0], RetryMiddleware)
 
@@ -64,9 +61,7 @@ def test_build_error_history_middleware_with_shorthand_keys():
 def test_build_multiple_in_order():
     from apcore import LoggingMiddleware, RetryMiddleware
 
-    result = build_middleware_from_config(
-        [{"type": "retry"}, {"type": "logging"}]
-    )
+    result = build_middleware_from_config([{"type": "retry"}, {"type": "logging"}])
     assert [type(m) for m in result] == [RetryMiddleware, LoggingMiddleware]
 
 
@@ -87,9 +82,7 @@ def test_build_non_mapping_entry_raises():
 
 def test_build_error_history_rejects_unknown_keys():
     with pytest.raises(ValueError, match="unexpected keys"):
-        build_middleware_from_config(
-            [{"type": "error_history", "bogus_key": True}]
-        )
+        build_middleware_from_config([{"type": "error_history", "bogus_key": True}])
 
 
 # ---------------------------------------------------------------------------

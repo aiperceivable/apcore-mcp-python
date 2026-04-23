@@ -48,18 +48,14 @@ def build_middleware_from_config(entries: list[dict[str, Any]]) -> list[Any]:
             RetryMiddleware,
         )
     except ImportError as exc:
-        raise RuntimeError(
-            "Config Bus `mcp.middleware` requires apcore>=0.18 with middleware support"
-        ) from exc
+        raise RuntimeError("Config Bus `mcp.middleware` requires apcore>=0.18 with middleware support") from exc
 
     from apcore.observability.error_history import ErrorHistory
 
     instances: list[Any] = []
     for idx, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            raise ValueError(
-                f"mcp.middleware[{idx}] must be an object with a 'type' key, got {type(entry).__name__}"
-            )
+            raise ValueError(f"mcp.middleware[{idx}] must be an object with a 'type' key, got {type(entry).__name__}")
         mw_type = entry.get("type")
         if not mw_type:
             raise ValueError(f"mcp.middleware[{idx}] missing required 'type' key")
@@ -80,9 +76,7 @@ def build_middleware_from_config(entries: list[dict[str, Any]]) -> list[Any]:
                 if key in kwargs:
                     history_kwargs[key] = kwargs.pop(key)
             if kwargs:
-                raise ValueError(
-                    f"mcp.middleware[{idx}] (error_history) got unexpected keys: {sorted(kwargs)}"
-                )
+                raise ValueError(f"mcp.middleware[{idx}] (error_history) got unexpected keys: {sorted(kwargs)}")
             history = ErrorHistory(**history_kwargs)
             instances.append(ErrorHistoryMiddleware(history))
         else:

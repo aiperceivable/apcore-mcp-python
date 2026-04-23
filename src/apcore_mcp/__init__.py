@@ -113,7 +113,7 @@ def serve(
     log_level: str | None = None,
     dynamic: bool = False,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
@@ -130,6 +130,10 @@ def serve(
     trace: bool = False,
     middleware: list[object] | None = None,
     acl: object | None = None,
+    observability: bool = False,
+    async_tasks: bool = True,
+    async_max_concurrent: int = 10,
+    async_max_tasks: int = 1000,
 ) -> None:
     """Launch an MCP Server that exposes all apcore modules as tools.
 
@@ -257,6 +261,32 @@ def serve(
         acl=effective_acl,
     )
 
+    # Observability auto-wiring (F-033/F-034). ``metrics_collector=True`` or
+    # ``observability=True`` provisions apcore's default MetricsCollector +
+    # MetricsMiddleware (and Usage when ``observability`` is on). An existing
+    # MetricsExporter object is left untouched — back-compat.
+    resolved_metrics: MetricsExporter | None
+    usage_collector: object | None = None
+    if observability or metrics_collector is True:
+        from apcore.observability import (
+            MetricsCollector,
+            MetricsMiddleware,
+            UsageCollector,
+            UsageMiddleware,
+        )
+
+        # retain user object when both flags present; otherwise auto-create
+        auto_mc = MetricsCollector() if metrics_collector is True or metrics_collector is None else metrics_collector
+        resolved_metrics = auto_mc
+        if hasattr(executor, "use"):
+            executor.use(MetricsMiddleware(auto_mc))
+            if observability:
+                uc = UsageCollector()
+                executor.use(UsageMiddleware(uc))
+                usage_collector = uc
+    else:
+        resolved_metrics = metrics_collector if metrics_collector is not True else None
+
     # Build output_schema_map for redaction
     output_schema_map: dict[str, dict] = {}
     if redact_output:
@@ -279,7 +309,27 @@ def serve(
         output_schema_map=output_schema_map,
         trace=trace,
     )
-    factory.register_handlers(server, tools, router)
+
+    async_bridge = None
+    if async_tasks:
+        from apcore.async_task import AsyncTaskManager
+
+        from apcore_mcp.server.async_task_bridge import AsyncTaskBridge
+
+        async_mgr = AsyncTaskManager(
+            executor,
+            max_concurrent=async_max_concurrent,
+            max_tasks=async_max_tasks,
+        )
+        async_bridge = AsyncTaskBridge(async_mgr)
+
+    factory.register_handlers(
+        server,
+        tools,
+        router,
+        async_bridge=async_bridge,
+        descriptor_lookup=registry.get_definition if async_tasks else None,
+    )
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=version)
 
@@ -330,8 +380,13 @@ def serve(
         auth_middleware = [(AuthMiddleware, mw_kwargs)]
 
     # Select and run transport
-    transport_manager = TransportManager(metrics_collector=metrics_collector)
+    transport_manager = TransportManager(metrics_collector=resolved_metrics)
     transport_manager.set_module_count(len(tools))
+    if usage_collector is not None and extra_routes is not None:
+        # Explorer UI usage endpoint — surfaces ModuleUsageSummary / detail via JSON.
+        from apcore_mcp.explorer import create_usage_routes
+
+        extra_routes.extend(create_usage_routes(usage_collector, prefix=explorer_prefix))
 
     async def _run() -> None:
         if transport_lower == "stdio":
@@ -367,7 +422,7 @@ async def async_serve(
     prefix: str | None = None,
     log_level: str | None = None,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
@@ -382,6 +437,10 @@ async def async_serve(
     strategy: str | None = None,
     trace: bool = False,
     redact_output: bool = True,
+    observability: bool = False,
+    async_tasks: bool = True,
+    async_max_concurrent: int = 10,
+    async_max_tasks: int = 1000,
 ) -> AsyncIterator[Starlette]:
     """Build an MCP Starlette ASGI app for embedding into a larger service.
 
@@ -457,6 +516,28 @@ async def async_serve(
         logger.warning("strategy parameter ignored when Executor is provided")
     executor = resolve_executor(registry_or_executor, approval_handler=approval_handler, strategy=strategy)
 
+    # Observability auto-wiring (see serve()).
+    resolved_metrics: MetricsExporter | None
+    usage_collector: object | None = None
+    if observability or metrics_collector is True:
+        from apcore.observability import (
+            MetricsCollector,
+            MetricsMiddleware,
+            UsageCollector,
+            UsageMiddleware,
+        )
+
+        auto_mc = MetricsCollector() if metrics_collector is True or metrics_collector is None else metrics_collector
+        resolved_metrics = auto_mc
+        if hasattr(executor, "use"):
+            executor.use(MetricsMiddleware(auto_mc))
+            if observability:
+                uc = UsageCollector()
+                executor.use(UsageMiddleware(uc))
+                usage_collector = uc
+    else:
+        resolved_metrics = metrics_collector if metrics_collector is not True else None
+
     # F-038: Build output schema map for redaction
     output_schema_map: dict[str, dict] = {}
     if redact_output:
@@ -477,7 +558,28 @@ async def async_serve(
         trace=trace,
         output_schema_map=output_schema_map,
     )
-    factory.register_handlers(server, tools, router)
+
+    async_bridge = None
+    if async_tasks:
+        from apcore.async_task import AsyncTaskManager
+
+        from apcore_mcp.server.async_task_bridge import AsyncTaskBridge
+
+        async_bridge = AsyncTaskBridge(
+            AsyncTaskManager(
+                executor,
+                max_concurrent=async_max_concurrent,
+                max_tasks=async_max_tasks,
+            )
+        )
+
+    factory.register_handlers(
+        server,
+        tools,
+        router,
+        async_bridge=async_bridge,
+        descriptor_lookup=registry.get_definition if async_tasks else None,
+    )
     factory.register_resource_handlers(server, registry)
     init_options = factory.build_init_options(server, name=name, version=resolved_version)
 
@@ -519,8 +621,12 @@ async def async_serve(
             mw_kwargs["exempt_prefixes"] = {explorer_prefix}
         auth_middleware = [(AuthMiddleware, mw_kwargs)]
 
-    transport_manager = TransportManager(metrics_collector=metrics_collector)
+    transport_manager = TransportManager(metrics_collector=resolved_metrics)
     transport_manager.set_module_count(len(tools))
+    if usage_collector is not None and extra_routes is not None:
+        from apcore_mcp.explorer import create_usage_routes
+
+        extra_routes.extend(create_usage_routes(usage_collector, prefix=explorer_prefix))
 
     async with transport_manager.build_streamable_http_app(
         server,

@@ -9,7 +9,6 @@ import pytest
 from apcore_mcp._utils import resolve_executor
 from apcore_mcp.acl_builder import build_acl_from_config
 
-
 # ---------------------------------------------------------------------------
 # build_acl_from_config — unit tests
 # ---------------------------------------------------------------------------
@@ -42,9 +41,7 @@ def test_build_with_default_effect_allow():
 
 
 def test_default_effect_defaults_to_deny_when_omitted():
-    acl = build_acl_from_config(
-        {"rules": [{"callers": ["*"], "targets": ["public.*"], "effect": "allow"}]}
-    )
+    acl = build_acl_from_config({"rules": [{"callers": ["*"], "targets": ["public.*"], "effect": "allow"}]})
     assert acl is not None
 
 
@@ -74,23 +71,17 @@ def test_invalid_default_effect_raises():
 
 def test_rule_missing_callers_raises():
     with pytest.raises(ValueError, match="'callers' must be a non-empty list"):
-        build_acl_from_config(
-            {"rules": [{"targets": ["x.*"], "effect": "allow"}]}
-        )
+        build_acl_from_config({"rules": [{"targets": ["x.*"], "effect": "allow"}]})
 
 
 def test_rule_missing_targets_raises():
     with pytest.raises(ValueError, match="'targets' must be a non-empty list"):
-        build_acl_from_config(
-            {"rules": [{"callers": ["*"], "effect": "allow"}]}
-        )
+        build_acl_from_config({"rules": [{"callers": ["*"], "effect": "allow"}]})
 
 
 def test_rule_invalid_effect_raises():
     with pytest.raises(ValueError, match="'effect' must be 'allow' or 'deny'"):
-        build_acl_from_config(
-            {"rules": [{"callers": ["*"], "targets": ["*"], "effect": "maybe"}]}
-        )
+        build_acl_from_config({"rules": [{"callers": ["*"], "targets": ["*"], "effect": "maybe"}]})
 
 
 def test_rule_unknown_key_raises():

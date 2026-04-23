@@ -22,11 +22,7 @@ from apcore_mcp.middleware_builder import build_middleware_from_config
 
 
 _FIXTURE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "apcore-mcp"
-    / "conformance"
-    / "fixtures"
-    / "middleware_config.json"
+    Path(__file__).resolve().parents[2] / "apcore-mcp" / "conformance" / "fixtures" / "middleware_config.json"
 )
 
 
@@ -76,8 +72,7 @@ def _labels(instances: list[object]) -> list[str]:
 def test_conformance_success_case(case: dict):
     result = build_middleware_from_config(case["input_entries"])
     assert _labels(result) == case["expected_middleware_names"], (
-        f"{case['id']}: got {_labels(result)}, expected "
-        f"{case['expected_middleware_names']}"
+        f"{case['id']}: got {_labels(result)}, expected " f"{case['expected_middleware_names']}"
     )
 
 
@@ -95,6 +90,5 @@ def test_conformance_error_case(case: dict):
     with pytest.raises(ValueError) as exc_info:
         build_middleware_from_config(case["input_entries"])
     assert case["expected_error_substring"] in str(exc_info.value), (
-        f"{case['id']}: error message {exc_info.value!r} missing substring "
-        f"{case['expected_error_substring']!r}"
+        f"{case['id']}: error message {exc_info.value!r} missing substring " f"{case['expected_error_substring']!r}"
     )
