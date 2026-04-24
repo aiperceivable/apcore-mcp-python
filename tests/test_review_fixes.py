@@ -6,13 +6,11 @@ before the fix is applied, pass after.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # B1: Config Bus mcp.pipeline strategy object crashes serve() at startup
@@ -61,7 +59,7 @@ class TestConfigBusStrategyFix:
         with patch("apcore.executor.Executor") as mock_exec_cls:
             mock_exec_cls.return_value = MagicMock()
             # Must NOT raise ValueError
-            executor = resolve_executor(mock_registry, strategy=strategy_object)
+            resolve_executor(mock_registry, strategy=strategy_object)
             call_kwargs = mock_exec_cls.call_args[1]
             assert call_kwargs["strategy"] is strategy_object
 
@@ -148,9 +146,7 @@ class TestStreamNonDictChunk:
         async def capture(n: dict) -> None:
             notifications.append(n)
 
-        content, is_error, _ = await router._handle_stream(
-            "my.tool", {}, "tok1", capture
-        )
+        content, is_error, _ = await router._handle_stream("my.tool", {}, "tok1", capture)
         # Should return error response, not crash with uncaught AttributeError
         assert is_error is True
         assert "TypeError" in content[0]["text"] or len(content) > 0
@@ -170,9 +166,7 @@ class TestStreamNonDictChunk:
         async def noop(_n: dict) -> None:
             pass
 
-        content, is_error, _ = await router._handle_stream(
-            "my.tool", {}, "tok1", noop
-        )
+        content, is_error, _ = await router._handle_stream("my.tool", {}, "tok1", noop)
         assert is_error is False
 
 
@@ -192,14 +186,10 @@ class TestErrorPathTraceId:
 
         router = ExecutionRouter(mock_executor)
 
-        from unittest.mock import MagicMock as MM
-
-        fake_context = MM()
+        fake_context = MagicMock()
         fake_context.trace_id = "trace-abc-123"
 
-        _content, is_error, trace_id = await router._handle_call_async(
-            "my.tool", {}, context=fake_context
-        )
+        _content, is_error, trace_id = await router._handle_call_async("my.tool", {}, context=fake_context)
         assert is_error is True
         # After fix: trace_id is propagated even on error
         assert trace_id == "trace-abc-123"
@@ -223,9 +213,7 @@ class TestErrorPathTraceId:
         async def noop(_n: dict) -> None:
             pass
 
-        _content, is_error, trace_id = await router._handle_stream(
-            "my.tool", {}, "tok1", noop, context=fake_context
-        )
+        _content, is_error, trace_id = await router._handle_stream("my.tool", {}, "tok1", noop, context=fake_context)
         assert is_error is True
         assert trace_id == "trace-xyz-456"
 
@@ -285,9 +273,9 @@ class TestValidateInputsLogLevel:
             await router.handle_call("my.tool", {})
 
         warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("validate" in m.lower() or "crashed" in m.lower() for m in warning_msgs), (
-            f"Expected WARNING log about validate_inputs crash, got: {warning_msgs}"
-        )
+        assert any(
+            "validate" in m.lower() or "crashed" in m.lower() for m in warning_msgs
+        ), f"Expected WARNING log about validate_inputs crash, got: {warning_msgs}"
 
 
 # ---------------------------------------------------------------------------
@@ -371,30 +359,31 @@ class TestConfigBusExceptionNarrowing:
 
     def test_config_bus_import_error_is_swallowed(self) -> None:
         """ImportError (apcore not installed) should still be silently swallowed."""
-        from apcore_mcp._utils import resolve_executor
 
         # Simulate a fresh resolve_executor call with a valid registry — just
         # test the broad concept by verifying that the fix in __init__.py narrows
         # the except clause. We verify the code structure directly.
-        import apcore_mcp.__init__ as init_mod
         import inspect
+
+        import apcore_mcp.__init__ as init_mod
 
         src = inspect.getsource(init_mod.serve)
         # After fix: except should be 'except ImportError', not 'except Exception'
         # Verify the pattern exists somewhere in the source
-        assert "except ImportError" in src or "ImportError" in src, (
-            "serve() Config Bus block should catch ImportError, not broad Exception"
-        )
+        assert (
+            "except ImportError" in src or "ImportError" in src
+        ), "serve() Config Bus block should catch ImportError, not broad Exception"
 
     def test_apcore_mcp_init_narrows_config_bus_catch(self) -> None:
         """APCoreMCP.__init__ Config Bus block should catch ImportError only."""
-        from apcore_mcp.apcore_mcp import APCoreMCP
         import inspect
 
+        from apcore_mcp.apcore_mcp import APCoreMCP
+
         src = inspect.getsource(APCoreMCP.__init__)
-        assert "except ImportError" in src or "ImportError" in src, (
-            "APCoreMCP.__init__ Config Bus block should catch ImportError, not broad Exception"
-        )
+        assert (
+            "except ImportError" in src or "ImportError" in src
+        ), "APCoreMCP.__init__ Config Bus block should catch ImportError, not broad Exception"
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +405,7 @@ class TestEnsureObjectTypeFix:
 
         result = converter._convert_schema(schema)
 
-        assert result["type"] == ["object", "null"], (
-            f"List type should be preserved, got: {result['type']!r}"
-        )
+        assert result["type"] == ["object", "null"], f"List type should be preserved, got: {result['type']!r}"
 
     def test_plain_object_type_still_works(self) -> None:
         from apcore_mcp.adapters.schema import SchemaConverter
@@ -452,17 +439,15 @@ class TestJWTAuthenticatorRequireAuthRemoved:
         from apcore_mcp.auth.jwt import JWTAuthenticator
 
         sig = inspect.signature(JWTAuthenticator.__init__)
-        assert "require_auth" not in sig.parameters, (
-            "require_auth was removed; AuthMiddleware is the correct owner of this policy"
-        )
+        assert (
+            "require_auth" not in sig.parameters
+        ), "require_auth was removed; AuthMiddleware is the correct owner of this policy"
 
     def test_require_auth_property_not_present(self) -> None:
         from apcore_mcp.auth.jwt import JWTAuthenticator
 
         auth = JWTAuthenticator(key="secret")
-        assert not hasattr(auth, "require_auth"), (
-            "require_auth property should be removed from JWTAuthenticator"
-        )
+        assert not hasattr(auth, "require_auth"), "require_auth property should be removed from JWTAuthenticator"
 
 
 # ---------------------------------------------------------------------------
@@ -473,9 +458,7 @@ class TestJWTAuthenticatorRequireAuthRemoved:
 class TestAuthMiddlewareExemptPathLogging:
     """W6 — authenticator exceptions on exempt paths must be logged at WARNING."""
 
-    async def test_authenticator_exception_on_exempt_path_is_logged(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_authenticator_exception_on_exempt_path_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         from apcore_mcp.auth.middleware import AuthMiddleware
 
         class BoomAuthenticator:
@@ -503,9 +486,9 @@ class TestAuthMiddlewareExemptPathLogging:
 
         # Exception must have been logged at WARNING after fix
         warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("authenticator" in m.lower() or "exempt" in m.lower() for m in warning_msgs), (
-            f"Expected WARNING about authenticator exception, got: {warning_msgs}"
-        )
+        assert any(
+            "authenticator" in m.lower() or "exempt" in m.lower() for m in warning_msgs
+        ), f"Expected WARNING about authenticator exception, got: {warning_msgs}"
 
 
 # ---------------------------------------------------------------------------
@@ -521,9 +504,9 @@ class TestCreateServerVersionDoc:
 
         doc = MCPServerFactory.create_server.__doc__ or ""
         # After fix: docstring must clarify version is used via build_init_options
-        assert "build_init_options" in doc or "InitializationOptions" in doc or "version" in doc.lower(), (
-            "create_server docstring should explain that version flows through build_init_options"
-        )
+        assert (
+            "build_init_options" in doc or "InitializationOptions" in doc or "version" in doc.lower()
+        ), "create_server docstring should explain that version flows through build_init_options"
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +552,4 @@ class TestFactoryDoesNotAccessBridgePrivateErrorMapper:
 
         factory = MCPServerFactory()
         # After fix: factory should have its own _error_mapper
-        assert hasattr(factory, "_error_mapper"), (
-            "MCPServerFactory should have its own _error_mapper after fix"
-        )
+        assert hasattr(factory, "_error_mapper"), "MCPServerFactory should have its own _error_mapper after fix"

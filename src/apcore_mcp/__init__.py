@@ -218,14 +218,15 @@ def serve(
     pipeline_strategy = None
     config_middleware: list[object] = []
     config_acl: object | None = None
+    _config_bus_loaded = False
     try:
         from apcore import Config, build_strategy_from_config
+
+        _config_bus_loaded = True
     except ImportError as exc:
         logger.debug("Config Bus not available, skipping: %s", exc)
-        Config = None  # type: ignore[assignment]
-        build_strategy_from_config = None  # type: ignore[assignment]
-    if Config is not None:
-        config = Config.load() if Config is not None else None
+    if _config_bus_loaded:
+        config = Config.load() if Config is not None else None  # type: ignore[possibly-undefined]
         if config:
             pipeline_config = config.get("mcp.pipeline")
             if pipeline_config and isinstance(pipeline_config, dict) and build_strategy_from_config is not None:
@@ -522,13 +523,15 @@ async def async_serve(
     # Only catch ImportError; builder ValueErrors propagate to fail loudly on bad config.
     config_middleware: list[object] = []
     config_acl: object | None = None
+    _async_config_bus_loaded = False
     try:
-        from apcore import Config as _Config
+        from apcore import Config as _AsyncConfig
+
+        _async_config_bus_loaded = True
     except ImportError as exc:
         logger.debug("Config Bus not available, skipping: %s", exc)
-        _Config = None  # type: ignore[assignment]
-    if _Config is not None:
-        _cfg = _Config.load() if _Config is not None else None
+    if _async_config_bus_loaded:
+        _cfg = _AsyncConfig.load() if _AsyncConfig is not None else None  # type: ignore[possibly-undefined]
         if _cfg:
             _mw_cfg = _cfg.get("mcp.middleware")
             if _mw_cfg and isinstance(_mw_cfg, list):

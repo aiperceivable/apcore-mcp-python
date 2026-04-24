@@ -132,13 +132,15 @@ class APCoreMCP:
         # loudly at startup, as the builders' docstrings promise.
         config_middleware: list[object] = []
         config_acl: object | None = None
+        _config_bus_loaded = False
         try:
             from apcore import Config
+
+            _config_bus_loaded = True
         except ImportError as exc:
             logger.debug("Config Bus not available, skipping: %s", exc)
-            Config = None  # type: ignore[assignment]
-        if Config is not None:
-            config = Config.load() if Config is not None else None
+        if _config_bus_loaded:
+            config = Config.load() if Config is not None else None  # type: ignore[possibly-undefined]
             if config:
                 mw_config = config.get("mcp.middleware")
                 if mw_config and isinstance(mw_config, list):
