@@ -44,7 +44,7 @@ def resolve_executor(
     else:
         from apcore.executor import Executor
 
-        if strategy is not None and strategy not in _VALID_STRATEGIES:
+        if isinstance(strategy, str) and strategy not in _VALID_STRATEGIES:
             raise ValueError(f"Unknown strategy: {strategy!r}. Valid: {sorted(_VALID_STRATEGIES)}")
 
         kwargs: dict[str, Any] = {"approval_handler": approval_handler}
