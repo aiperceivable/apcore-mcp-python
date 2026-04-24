@@ -161,8 +161,11 @@ def test_apcore_mcp_reads_config_bus_middleware():
 
     registry = Registry()
 
+    # Return key-specific values so mcp.acl / mcp.pipeline don't receive the
+    # middleware list (which would trigger ValueError in build_acl_from_config).
+    config_data = {"mcp.middleware": [{"type": "retry", "max_retries": 2}]}
     fake_config = MagicMock()
-    fake_config.get.return_value = [{"type": "retry", "max_retries": 2}]
+    fake_config.get.side_effect = lambda key, *a, **kw: config_data.get(key)
 
     with patch("apcore.Config.load", return_value=fake_config):
         mcp = APCoreMCP(registry)
@@ -184,8 +187,9 @@ def test_apcore_mcp_merges_config_and_constructor_middleware():
 
     registry = Registry()
 
+    config_data = {"mcp.middleware": [{"type": "retry"}]}
     fake_config = MagicMock()
-    fake_config.get.return_value = [{"type": "retry"}]
+    fake_config.get.side_effect = lambda key, *a, **kw: config_data.get(key)
 
     user_mw = LoggingMiddleware()
     with patch("apcore.Config.load", return_value=fake_config):

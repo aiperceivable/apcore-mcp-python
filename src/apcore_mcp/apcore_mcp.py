@@ -127,11 +127,17 @@ class APCoreMCP:
         self._registry = resolve_registry(backend)
 
         # Load declarative middleware + ACL from Config Bus, then merge with caller args.
+        # Only catch ImportError — apcore may not be installed or may be an older version.
+        # Builder ValueErrors (malformed YAML) must propagate so misconfiguration fails
+        # loudly at startup, as the builders' docstrings promise.
         config_middleware: list[object] = []
         config_acl: object | None = None
         try:
             from apcore import Config
-
+        except ImportError as exc:
+            logger.debug("Config Bus not available, skipping: %s", exc)
+            Config = None  # type: ignore[assignment]
+        if Config is not None:
             config = Config.load() if Config is not None else None
             if config:
                 mw_config = config.get("mcp.middleware")
@@ -144,8 +150,6 @@ class APCoreMCP:
                     from apcore_mcp.acl_builder import build_acl_from_config
 
                     config_acl = build_acl_from_config(acl_config)
-        except Exception as exc:
-            logger.debug("Config Bus lookup skipped: %s", exc)
 
         combined_middleware: list[object] = list(config_middleware)
         if middleware:
@@ -237,10 +241,22 @@ class APCoreMCP:
         factory = MCPServerFactory()
         server = factory.create_server(name=self._name, version=version)
         tools = factory.build_tools(self._registry, tags=self._tags, prefix=self._prefix)
+
+        # Build per-tool output schema map for redaction (matches serve() behaviour)
+        output_schema_map: dict[str, dict] = {}
+        for mid in self._registry.list(tags=self._tags, prefix=self._prefix):
+            desc = self._registry.get_definition(mid)
+            if desc is not None:
+                schema = getattr(desc, "output_schema", None)
+                if schema:
+                    output_schema_map[mid] = schema
+
         router = ExecutionRouter(
             self._executor,
             validate_inputs=self._validate_inputs,
             output_formatter=self._output_formatter,
+            redact_output=True,
+            output_schema_map=output_schema_map,
         )
 
         async_bridge: AsyncTaskBridge | None = None

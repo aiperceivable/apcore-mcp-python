@@ -211,17 +211,24 @@ def serve(
 
     registry = resolve_registry(registry_or_executor)
 
-    # B5: F-040 — Check Config Bus for YAML pipeline configuration
+    # Check Config Bus for YAML pipeline / middleware / ACL configuration.
+    # Only catch ImportError — apcore may not be installed or may be an older version.
+    # Builder ValueErrors (malformed YAML) must propagate so misconfiguration fails
+    # loudly at startup, as the builders' docstrings promise.
     pipeline_strategy = None
     config_middleware: list[object] = []
     config_acl: object | None = None
     try:
         from apcore import Config, build_strategy_from_config
-
+    except ImportError as exc:
+        logger.debug("Config Bus not available, skipping: %s", exc)
+        Config = None  # type: ignore[assignment]
+        build_strategy_from_config = None  # type: ignore[assignment]
+    if Config is not None:
         config = Config.load() if Config is not None else None
         if config:
             pipeline_config = config.get("mcp.pipeline")
-            if pipeline_config and isinstance(pipeline_config, dict):
+            if pipeline_config and isinstance(pipeline_config, dict) and build_strategy_from_config is not None:
                 pipeline_strategy = build_strategy_from_config(pipeline_config, registry=registry)
                 if strategy:
                     logger.warning("YAML pipeline config overrides strategy parameter")
@@ -237,8 +244,6 @@ def serve(
                 from apcore_mcp.acl_builder import build_acl_from_config
 
                 config_acl = build_acl_from_config(acl_config)
-    except Exception as exc:
-        logger.debug("Config Bus lookup skipped: %s", exc)
 
     # Merge Config Bus middleware (applied first) with caller-supplied middleware.
     combined_middleware: list[object] = list(config_middleware)
@@ -437,6 +442,8 @@ async def async_serve(
     strategy: str | None = None,
     trace: bool = False,
     redact_output: bool = True,
+    middleware: list[object] | None = None,
+    acl: object | None = None,
     observability: bool = False,
     async_tasks: bool = True,
     async_max_concurrent: int = 10,
@@ -511,10 +518,46 @@ async def async_serve(
 
     registry = resolve_registry(registry_or_executor)
 
+    # Load middleware + ACL from Config Bus (mirrors serve() behaviour).
+    # Only catch ImportError; builder ValueErrors propagate to fail loudly on bad config.
+    config_middleware: list[object] = []
+    config_acl: object | None = None
+    try:
+        from apcore import Config as _Config
+    except ImportError as exc:
+        logger.debug("Config Bus not available, skipping: %s", exc)
+        _Config = None  # type: ignore[assignment]
+    if _Config is not None:
+        _cfg = _Config.load() if _Config is not None else None
+        if _cfg:
+            _mw_cfg = _cfg.get("mcp.middleware")
+            if _mw_cfg and isinstance(_mw_cfg, list):
+                from apcore_mcp.middleware_builder import build_middleware_from_config as _build_mw
+
+                config_middleware = _build_mw(_mw_cfg)
+            _acl_cfg = _cfg.get("mcp.acl")
+            if _acl_cfg:
+                from apcore_mcp.acl_builder import build_acl_from_config as _build_acl
+
+                config_acl = _build_acl(_acl_cfg)
+
+    combined_middleware: list[object] = list(config_middleware)
+    if middleware:
+        combined_middleware.extend(middleware)
+    effective_acl = acl if acl is not None else config_acl
+    if acl is not None and config_acl is not None:
+        logger.info("Caller-supplied acl argument overrides Config Bus `mcp.acl`")
+
     # F-036: strategy parameter
     if hasattr(registry_or_executor, "call_async") and strategy is not None:
         logger.warning("strategy parameter ignored when Executor is provided")
-    executor = resolve_executor(registry_or_executor, approval_handler=approval_handler, strategy=strategy)
+    executor = resolve_executor(
+        registry_or_executor,
+        approval_handler=approval_handler,
+        strategy=strategy,
+        middleware=combined_middleware,
+        acl=effective_acl,
+    )
 
     # Observability auto-wiring (see serve()).
     resolved_metrics: MetricsExporter | None
