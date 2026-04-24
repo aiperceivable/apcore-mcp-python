@@ -307,28 +307,11 @@ class TestMCPServerRun:
             assert server._stopped.is_set()
 
     def test_run_unknown_transport_raises(self) -> None:
-        """_run with unknown transport raises ValueError."""
+        """Unknown transport raises ValueError at construction time."""
         registry = StubRegistry()
-        server = MCPServer(registry, transport="unknown")
-
-        with (
-            patch("apcore_mcp._utils.resolve_registry", return_value=registry),
-            patch("apcore_mcp._utils.resolve_executor") as mock_resolve_exec,
-            patch("apcore_mcp.server.factory.MCPServerFactory") as mock_factory_cls,
-            patch("apcore_mcp.server.router.ExecutionRouter"),
-            patch("apcore_mcp.server.transport.TransportManager"),
-        ):
-            mock_resolve_exec.return_value = MagicMock()
-            mock_factory = mock_factory_cls.return_value
-            mock_factory.create_server.return_value = MagicMock()
-            mock_factory.build_tools.return_value = []
-            mock_factory.build_init_options.return_value = MagicMock()
-
-            with pytest.raises(ValueError, match="Unknown transport"):
-                server._run()
-
-            # Loop should still be closed in finally block
-            assert server._stopped.is_set()
+        # Transport is now validated in __init__ so the error surfaces immediately.
+        with pytest.raises(ValueError, match="Unknown transport"):
+            MCPServer(registry, transport="unknown")
 
     def test_run_uses_package_version_when_version_is_none(self) -> None:
         """_run uses __version__ from package when version is not specified."""
@@ -425,6 +408,7 @@ class TestMCPServerRun:
             mock_router_cls.assert_called_once_with(
                 mock_executor,
                 validate_inputs=True,
+                output_schema_map={},
             )
 
     def test_run_closes_loop_on_error(self) -> None:
@@ -451,8 +435,11 @@ class TestMCPServerRun:
 
             mock_tm.run_stdio = MagicMock(side_effect=lambda *a, **kw: failing())
 
-            with pytest.raises(RuntimeError, match="Transport failed"):
-                server._run()
+            # _run() no longer propagates — it stores the error and signals _started.
+            server._run()
 
+            # Error must be captured, not swallowed
+            assert server._start_error is not None
+            assert "Transport failed" in str(server._start_error)
             # Loop should be closed and stopped should be set despite error
             assert server._stopped.is_set()

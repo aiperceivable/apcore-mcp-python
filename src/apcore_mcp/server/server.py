@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_VALID_TRANSPORTS = frozenset({"stdio", "streamable-http", "sse"})
+
+
 class MCPServer:
     """Non-blocking MCP server.
 
@@ -40,9 +43,17 @@ class MCPServer:
         authenticator: Authenticator | None = None,
         require_auth: bool = True,
         exempt_paths: set[str] | None = None,
+        async_tasks: bool = True,
+        async_max_concurrent: int = 10,
+        async_max_tasks: int = 1000,
     ) -> None:
+        transport_lower = transport.lower()
+        if transport_lower not in _VALID_TRANSPORTS:
+            raise ValueError(
+                f"Unknown transport: {transport!r}. Expected one of {sorted(_VALID_TRANSPORTS)}"
+            )
         self._registry_or_executor = registry_or_executor
-        self._transport = transport.lower()
+        self._transport = transport_lower
         self._host = host
         self._port = port
         self._name = name
@@ -54,10 +65,14 @@ class MCPServer:
         self._authenticator = authenticator
         self._require_auth = require_auth
         self._exempt_paths = exempt_paths
+        self._async_tasks = async_tasks
+        self._async_max_concurrent = async_max_concurrent
+        self._async_max_tasks = async_max_tasks
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._started = threading.Event()
         self._stopped = threading.Event()
+        self._start_error: BaseException | None = None
 
     @property
     def address(self) -> str:
@@ -67,12 +82,19 @@ class MCPServer:
         return f"http://{self._host}:{self._port}"
 
     def start(self) -> None:
-        """Start the server in a background thread (non-blocking)."""
+        """Start the server in a background thread (non-blocking).
+
+        Raises:
+            RuntimeError: if the server fails to initialise (e.g., port already in use).
+        """
         if self._thread is not None:
             return
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         self._started.wait(timeout=10)
+        if self._start_error is not None:
+            err = self._start_error
+            raise RuntimeError(f"MCP server failed to start: {err}") from err
 
     def wait(self) -> None:
         """Block until the server stops."""
@@ -87,81 +109,116 @@ class MCPServer:
 
     def _run(self) -> None:
         """Internal: run the server event loop."""
-        from importlib.metadata import PackageNotFoundError
-        from importlib.metadata import version as _pkg_version
-
-        from apcore_mcp._utils import resolve_executor, resolve_registry
-
         try:
-            __version__ = _pkg_version("apcore-mcp")
-        except PackageNotFoundError:
-            __version__ = "unknown"
-        from apcore_mcp.server.factory import MCPServerFactory
-        from apcore_mcp.server.router import ExecutionRouter
-        from apcore_mcp.server.transport import TransportManager
+            from importlib.metadata import PackageNotFoundError
+            from importlib.metadata import version as _pkg_version
 
-        registry = resolve_registry(self._registry_or_executor)
-        executor = resolve_executor(self._registry_or_executor)
-        version = self._version or __version__
+            from apcore_mcp._utils import resolve_executor, resolve_registry
 
-        factory = MCPServerFactory()
-        server = factory.create_server(name=self._name, version=version)
-        tools = factory.build_tools(registry, tags=self._tags, prefix=self._prefix)
-        router = ExecutionRouter(executor, validate_inputs=self._validate_inputs)
-        factory.register_handlers(server, tools, router)
-        factory.register_resource_handlers(server, registry)
-        init_options = factory.build_init_options(
-            server,
-            name=self._name,
-            version=version,
-        )
+            try:
+                __version__ = _pkg_version("apcore-mcp")
+            except PackageNotFoundError:
+                __version__ = "unknown"
+            from apcore_mcp.server.factory import MCPServerFactory
+            from apcore_mcp.server.router import ExecutionRouter
+            from apcore_mcp.server.transport import TransportManager
 
-        # Build auth middleware for HTTP transports
-        auth_middleware: list[tuple[type, dict]] | None = None
-        if self._authenticator is not None and self._transport in ("streamable-http", "sse"):
-            from apcore_mcp.auth import AuthMiddleware
+            registry = resolve_registry(self._registry_or_executor)
+            executor = resolve_executor(self._registry_or_executor)
+            version = self._version or __version__
 
-            mw_kwargs: dict[str, object] = {"authenticator": self._authenticator}
-            if not self._require_auth:
-                mw_kwargs["require_auth"] = False
-            if self._exempt_paths is not None:
-                mw_kwargs["exempt_paths"] = self._exempt_paths
-            auth_middleware = [(AuthMiddleware, mw_kwargs)]
+            # Build output schema map for per-tool output redaction
+            output_schema_map: dict[str, dict] = {}
+            for module_id in registry.list(tags=self._tags, prefix=self._prefix):
+                descriptor = registry.get_definition(module_id)
+                if descriptor is not None:
+                    schema = getattr(descriptor, "output_schema", None)
+                    if schema:
+                        output_schema_map[module_id] = schema
 
-        transport_manager = TransportManager(metrics_collector=self._metrics_collector)
-        transport_manager.set_module_count(len(tools))
+            factory = MCPServerFactory()
+            server = factory.create_server(name=self._name, version=version)
+            tools = factory.build_tools(registry, tags=self._tags, prefix=self._prefix)
+            router = ExecutionRouter(
+                executor,
+                validate_inputs=self._validate_inputs,
+                output_schema_map=output_schema_map,
+            )
 
-        self._loop = asyncio.new_event_loop()
-        self._started.set()
+            async_bridge = None
+            if self._async_tasks:
+                from apcore.async_task import AsyncTaskManager
 
-        try:
-            if self._transport == "stdio":
-                self._loop.run_until_complete(
-                    transport_manager.run_stdio(server, init_options),
+                from apcore_mcp.server.async_task_bridge import AsyncTaskBridge
+
+                async_bridge = AsyncTaskBridge(
+                    AsyncTaskManager(
+                        executor,
+                        max_concurrent=self._async_max_concurrent,
+                        max_tasks=self._async_max_tasks,
+                    )
                 )
-            elif self._transport == "streamable-http":
-                self._loop.run_until_complete(
-                    transport_manager.run_streamable_http(
-                        server,
-                        init_options,
-                        host=self._host,
-                        port=self._port,
-                        middleware=auth_middleware,
-                    ),
-                )
-            elif self._transport == "sse":
-                self._loop.run_until_complete(
-                    transport_manager.run_sse(
-                        server,
-                        init_options,
-                        host=self._host,
-                        port=self._port,
-                        middleware=auth_middleware,
-                    ),
-                )
-            else:
-                msg = f"Unknown transport: {self._transport}"
-                raise ValueError(msg)
-        finally:
-            self._loop.close()
-            self._stopped.set()
+
+            factory.register_handlers(
+                server,
+                tools,
+                router,
+                async_bridge=async_bridge,
+                descriptor_lookup=registry.get_definition if self._async_tasks else None,
+            )
+            factory.register_resource_handlers(server, registry)
+            init_options = factory.build_init_options(
+                server,
+                name=self._name,
+                version=version,
+            )
+
+            # Build auth middleware for HTTP transports
+            auth_middleware: list[tuple[type, dict]] | None = None
+            if self._authenticator is not None and self._transport in ("streamable-http", "sse"):
+                from apcore_mcp.auth import AuthMiddleware
+
+                mw_kwargs: dict[str, object] = {"authenticator": self._authenticator}
+                if not self._require_auth:
+                    mw_kwargs["require_auth"] = False
+                if self._exempt_paths is not None:
+                    mw_kwargs["exempt_paths"] = self._exempt_paths
+                auth_middleware = [(AuthMiddleware, mw_kwargs)]
+
+            transport_manager = TransportManager(metrics_collector=self._metrics_collector)
+            transport_manager.set_module_count(len(tools))
+
+            self._loop = asyncio.new_event_loop()
+            self._started.set()
+
+            try:
+                if self._transport == "stdio":
+                    self._loop.run_until_complete(
+                        transport_manager.run_stdio(server, init_options),
+                    )
+                elif self._transport == "streamable-http":
+                    self._loop.run_until_complete(
+                        transport_manager.run_streamable_http(
+                            server,
+                            init_options,
+                            host=self._host,
+                            port=self._port,
+                            middleware=auth_middleware,
+                        ),
+                    )
+                elif self._transport == "sse":
+                    self._loop.run_until_complete(
+                        transport_manager.run_sse(
+                            server,
+                            init_options,
+                            host=self._host,
+                            port=self._port,
+                            middleware=auth_middleware,
+                        ),
+                    )
+            finally:
+                self._loop.close()
+                self._stopped.set()
+        except Exception as exc:
+            self._start_error = exc
+            self._started.set()  # unblock start() so it can surface the error
