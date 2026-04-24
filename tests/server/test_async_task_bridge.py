@@ -13,13 +13,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-
 from apcore.async_task import AsyncTaskManager, TaskStatus
 from apcore.errors import TaskLimitExceededError
 
 from apcore_mcp.server.async_task_bridge import META_TOOL_NAMES, AsyncTaskBridge
 from apcore_mcp.server.factory import MCPServerFactory
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -119,9 +117,7 @@ async def test_status_tool_returns_result_when_completed() -> None:
             break
         await asyncio.sleep(0.005)
 
-    content, is_error, _ = await bridge.handle_meta_tool(
-        "__apcore_task_status", {"task_id": task_id}
-    )
+    content, is_error, _ = await bridge.handle_meta_tool("__apcore_task_status", {"task_id": task_id})
     assert is_error is False
     body = json.loads(content[0]["text"])
     assert body["status"] == "completed"
@@ -132,9 +128,7 @@ async def test_status_tool_returns_result_when_completed() -> None:
 async def test_status_tool_unknown_task_id() -> None:
     mgr = AsyncTaskManager(_SlowExecutor())
     bridge = AsyncTaskBridge(mgr)
-    content, is_error, _ = await bridge.handle_meta_tool(
-        "__apcore_task_status", {"task_id": "missing"}
-    )
+    content, is_error, _ = await bridge.handle_meta_tool("__apcore_task_status", {"task_id": "missing"})
     assert is_error is True
     body = json.loads(content[0]["text"])
     assert body["error"] == "ASYNC_TASK_NOT_FOUND"
@@ -154,9 +148,7 @@ async def test_cancel_tool_cancels_running_task() -> None:
     envelope = await bridge.submit("m", {}, None)
     task_id = envelope["task_id"]
 
-    content, is_error, _ = await bridge.handle_meta_tool(
-        "__apcore_task_cancel", {"task_id": task_id}
-    )
+    content, is_error, _ = await bridge.handle_meta_tool("__apcore_task_cancel", {"task_id": task_id})
     assert is_error is False
     body = json.loads(content[0]["text"])
     assert body["task_id"] == task_id
@@ -246,9 +238,7 @@ async def test_progress_fanout_binds_token_and_sink() -> None:
     from apcore import Context
 
     ctx = Context.create()
-    await bridge._submit_with_progress(
-        "m", {}, ctx, progress_token="tok-1", send_notification=send
-    )
+    await bridge._submit_with_progress("m", {}, ctx, progress_token="tok-1", send_notification=send)
     # Simulate the module invoking the installed progress callback.
     cb = ctx.data["_mcp_progress"]
     await cb(0.5, 1.0, "halfway")

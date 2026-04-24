@@ -450,9 +450,7 @@ class ExecutionRouter:
 
             async for chunk in stream_iter:
                 if not isinstance(chunk, dict):
-                    raise TypeError(
-                        f"stream chunk must be dict, got {type(chunk).__name__}: {chunk!r}"
-                    )
+                    raise TypeError(f"stream chunk must be dict, got {type(chunk).__name__}: {chunk!r}")
                 # Redact each chunk before sending so sensitive fields never reach
                 # the client via progress notifications, even before final accumulation.
                 safe_chunk = self._maybe_redact(tool_name, chunk)
@@ -481,8 +479,6 @@ class ExecutionRouter:
         except Exception as error:
             logger.error("handle_call stream error for %s: %s", tool_name, error)
             error_info = self._error_mapper.to_mcp_error(error)
-            stream_error_content: list[dict[str, Any]] = [
-                {"type": "text", "text": self._build_error_text(error_info)}
-            ]
+            stream_error_content: list[dict[str, Any]] = [{"type": "text", "text": self._build_error_text(error_info)}]
             self._attach_traceparent(stream_error_content, context)
             return (stream_error_content, True, context.trace_id if context is not None else None)

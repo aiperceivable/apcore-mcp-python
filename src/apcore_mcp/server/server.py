@@ -49,9 +49,7 @@ class MCPServer:
     ) -> None:
         transport_lower = transport.lower()
         if transport_lower not in _VALID_TRANSPORTS:
-            raise ValueError(
-                f"Unknown transport: {transport!r}. Expected one of {sorted(_VALID_TRANSPORTS)}"
-            )
+            raise ValueError(f"Unknown transport: {transport!r}. Expected one of {sorted(_VALID_TRANSPORTS)}")
         self._registry_or_executor = registry_or_executor
         self._transport = transport_lower
         self._host = host
