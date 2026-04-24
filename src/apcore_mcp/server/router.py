@@ -156,13 +156,17 @@ class ExecutionRouter:
                 "requires_approval": result.requires_approval,
             }
         except Exception as e:
+            error_info = self._error_mapper.to_mcp_error(e)
             return {
                 "valid": False,
                 "checks": [
                     {
                         "check": "unexpected",
                         "passed": False,
-                        "error": {"message": str(e)},
+                        "error": {
+                            "error_type": error_info.get("error_type", "UNEXPECTED_ERROR"),
+                            "message": error_info["message"],
+                        },
                         "warnings": [],
                     }
                 ],
@@ -304,7 +308,7 @@ class ExecutionRouter:
             except AttributeError:
                 pass  # executor lacks validate() — skip
             except Exception as error:
-                logger.debug("validate_inputs error for %s: %s", tool_name, error)
+                logger.warning("validate_inputs crashed for %s: %s", tool_name, error, exc_info=True)
                 error_info = self._error_mapper.to_mcp_error(error)
                 return ([{"type": "text", "text": error_info["message"]}], True, None)
 
@@ -410,7 +414,9 @@ class ExecutionRouter:
         except Exception as error:
             logger.error("handle_call error for %s: %s", tool_name, error)
             error_info = self._error_mapper.to_mcp_error(error)
-            return ([{"type": "text", "text": self._build_error_text(error_info)}], True, None)
+            error_content: list[dict[str, Any]] = [{"type": "text", "text": self._build_error_text(error_info)}]
+            self._attach_traceparent(error_content, context)
+            return (error_content, True, context.trace_id if context is not None else None)
 
     async def _handle_stream(
         self,
@@ -443,6 +449,13 @@ class ExecutionRouter:
                 stream_iter = self._executor.stream(tool_name, arguments, **stream_kwargs)
 
             async for chunk in stream_iter:
+                if not isinstance(chunk, dict):
+                    raise TypeError(
+                        f"stream chunk must be dict, got {type(chunk).__name__}: {chunk!r}"
+                    )
+                # Redact each chunk before sending so sensitive fields never reach
+                # the client via progress notifications, even before final accumulation.
+                safe_chunk = self._maybe_redact(tool_name, chunk)
                 # Send progress notification for this chunk
                 notification: dict[str, Any] = {
                     "method": "notifications/progress",
@@ -450,7 +463,7 @@ class ExecutionRouter:
                         "progressToken": progress_token,
                         "progress": chunk_index + 1,
                         "total": None,
-                        "message": json.dumps(chunk, default=str),
+                        "message": json.dumps(safe_chunk, default=str),
                     },
                 }
                 await send_notification(notification)
@@ -468,4 +481,8 @@ class ExecutionRouter:
         except Exception as error:
             logger.error("handle_call stream error for %s: %s", tool_name, error)
             error_info = self._error_mapper.to_mcp_error(error)
-            return ([{"type": "text", "text": self._build_error_text(error_info)}], True, None)
+            stream_error_content: list[dict[str, Any]] = [
+                {"type": "text", "text": self._build_error_text(error_info)}
+            ]
+            self._attach_traceparent(stream_error_content, context)
+            return (stream_error_content, True, context.trace_id if context is not None else None)
