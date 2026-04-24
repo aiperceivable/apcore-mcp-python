@@ -232,8 +232,14 @@ class SchemaConverter:
         if "type" not in schema:
             schema["type"] = "object"
 
-        # If schema has properties but no type, ensure it's an object
-        if "properties" in schema and schema.get("type") != "object":
+        # If schema has properties but no object type, force object — but only
+        # when the existing type does not already include "object".  This
+        # correctly handles both the scalar form ("string", "integer") AND
+        # the list form (["object", "null"]) so that nullable-object schemas
+        # are not downgraded from ["object","null"] to bare "object".
+        node_type = schema.get("type")
+        type_is_object = node_type == "object" or (isinstance(node_type, list) and "object" in node_type)
+        if "properties" in schema and not type_is_object:
             schema["type"] = "object"
 
         return schema
