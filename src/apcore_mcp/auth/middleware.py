@@ -74,7 +74,11 @@ class AuthMiddleware:
                 headers = extract_headers(scope)
                 identity = self._authenticator.authenticate(headers)
             except Exception:
-                pass
+                logger.warning(
+                    "Authenticator raised on exempt path %s — proceeding with identity=None",
+                    path,
+                    exc_info=True,
+                )
             token = auth_identity_var.set(identity)
             try:
                 await self._app(scope, receive, send)

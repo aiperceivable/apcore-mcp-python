@@ -34,6 +34,10 @@ class ClaimMapping:
 class JWTAuthenticator:
     """Validates JWT Bearer tokens and returns ``Identity``.
 
+    The ``require_auth`` policy (whether unauthenticated requests receive a 401
+    or proceed without identity) is owned by :class:`AuthMiddleware`, not by
+    this class.  Configure it via ``AuthMiddleware(require_auth=...)``.
+
     Args:
         key: Secret key or public key for verification.
         algorithms: Allowed JWT algorithms.
@@ -41,9 +45,6 @@ class JWTAuthenticator:
         issuer: Expected ``iss`` claim (optional).
         claim_mapping: Maps JWT claims to Identity fields.
         require_claims: Claims that must be present in the token.
-        require_auth: Whether unauthenticated requests should be rejected.
-            Defaults to ``True``.  When ``False``, requests without a valid
-            token proceed with ``identity=None`` (permissive mode).
     """
 
     def __init__(
@@ -55,7 +56,6 @@ class JWTAuthenticator:
         issuer: str | None = None,
         claim_mapping: ClaimMapping | None = None,
         require_claims: list[str] | None = None,
-        require_auth: bool = True,
     ) -> None:
         self._key = key
         self._algorithms = algorithms or ["HS256"]
@@ -63,12 +63,6 @@ class JWTAuthenticator:
         self._issuer = issuer
         self._claim_mapping = claim_mapping or ClaimMapping()
         self._require_claims: list[str] = require_claims if require_claims is not None else ["sub"]
-        self._require_auth = require_auth
-
-    @property
-    def require_auth(self) -> bool:
-        """Whether unauthenticated requests should be rejected."""
-        return self._require_auth
 
     def authenticate(self, headers: dict[str, str]) -> Identity | None:
         """Extract Bearer token from headers, decode, and return Identity."""
