@@ -32,13 +32,18 @@ class MCPServerFactory:
         self._schema_converter = SchemaConverter(strict=strict)
         self._annotation_mapper = AnnotationMapper()
         self._schema_exporter = SchemaExporter()
+        from apcore_mcp.adapters.errors import ErrorMapper
+
+        self._error_mapper = ErrorMapper()
 
     def create_server(self, name: str = "apcore-mcp", version: str = "0.1.0") -> Server:
         """Create a new MCP low-level Server instance.
 
         Args:
             name: Server name for identification.
-            version: Server version string.
+            version: Server version string. Note: the MCP SDK's ``Server``
+                constructor only accepts ``name``; ``version`` is surfaced to
+                clients through :meth:`build_init_options` / ``InitializationOptions``.
 
         Returns:
             A configured Server. Handlers are NOT registered yet.
@@ -157,6 +162,14 @@ class MCPServerFactory:
                 continue
             try:
                 tools.append(self.build_tool(descriptor))
+            except ValueError as e:
+                # Reserved-prefix violations are hard config errors — re-raise so
+                # misconfiguration is visible at startup rather than silently
+                # producing a missing tool.
+                if "reserved prefix" in str(e).lower():
+                    raise
+                logger.warning("Failed to build tool for %s: %s", module_id, e)
+                continue
             except Exception as e:
                 logger.warning("Failed to build tool for %s: %s", module_id, e)
                 continue
@@ -271,7 +284,7 @@ class MCPServerFactory:
                     is_error = False
                 except Exception as exc:
                     logger.error("async submit failed for %s: %s", name, exc)
-                    info = async_bridge._error_mapper.to_mcp_error(exc)
+                    info = self._error_mapper.to_mcp_error(exc)
                     content = [{"type": "text", "text": info["message"]}]
                     is_error = True
             else:
