@@ -116,9 +116,14 @@ class TestBuildTool:
     def test_build_tool_empty_schema(
         self, factory: MCPServerFactory, empty_schema_descriptor: ModuleDescriptor
     ) -> None:
-        """build_tool handles empty input schema by producing {type: object, properties: {}}."""
+        """build_tool handles empty input schema; in strict mode (default)
+        also injects additionalProperties:false per [SC-10]."""
         tool = factory.build_tool(empty_schema_descriptor)
-        assert tool.inputSchema == {"type": "object", "properties": {}}
+        assert tool.inputSchema == {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
 
     def test_build_tool_destructive_annotations(
         self, factory: MCPServerFactory, destructive_descriptor: ModuleDescriptor

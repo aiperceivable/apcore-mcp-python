@@ -434,11 +434,13 @@ class TestOpenAIToolsRoundtrip:
         assert "name" in items["properties"]
 
     def test_empty_schema_gets_default(self, registry: StubRegistry) -> None:
-        """Empty input_schema is converted to {type: 'object', properties: {}}."""
+        """Empty input_schema is converted to a normalized object schema.
+        Strict mode (default per [SC-10]) also injects additionalProperties:false."""
         tools = to_openai_tools(registry)
         ping_tool = next(t for t in tools if t["function"]["name"] == "system-ping")
         params = ping_tool["function"]["parameters"]
-        assert params == {"type": "object", "properties": {}}
+        assert params["type"] == "object"
+        assert params["properties"] == {}
 
 
 # ---------------------------------------------------------------------------

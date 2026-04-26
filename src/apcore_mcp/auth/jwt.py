@@ -92,6 +92,11 @@ class JWTAuthenticator:
                 "key": self._key,
                 "algorithms": self._algorithms,
                 "options": options,
+                # [JWT-3] Spec mandates a clock-skew leeway of ~30 seconds.
+                # pyjwt's default is 0; without this, NTP drift between the
+                # token issuer and this server produces spurious 401s on
+                # tokens that are valid within ±30s of expiry/nbf.
+                "leeway": 30,
             }
             if self._audience is not None:
                 kwargs["audience"] = self._audience

@@ -235,12 +235,15 @@ class TestConvertDescriptor:
         assert desc == "Echo the input text"
 
     def test_convert_descriptor_empty_schema(self, converter, empty_schema_descriptor):
-        """Handles empty input_schema (SchemaConverter fills in defaults)."""
+        """Handles empty input_schema (SchemaConverter fills in defaults).
+        Post-[SC-10] strict mode (default) also injects additionalProperties:false."""
         result = converter.convert_descriptor(empty_schema_descriptor)
         params = result["function"]["parameters"]
 
         # SchemaConverter converts {} to {"type": "object", "properties": {}}
-        assert params == {"type": "object", "properties": {}}
+        # plus additionalProperties:false in strict mode.
+        assert params["type"] == "object"
+        assert params["properties"] == {}
 
     def test_convert_descriptor_destructive(self, converter, destructive_descriptor):
         """Destructive descriptor is correctly converted with annotation embed."""

@@ -70,7 +70,14 @@ class SchemaConverter:
 
         # Handle empty schema
         if not schema:
-            return {"type": "object", "properties": {}}
+            result: dict[str, Any] = {"type": "object", "properties": {}}
+            # [SC-10] Spec mandates additionalProperties:false on objects
+            # in strict mode, INCLUDING the empty-schema short-circuit.
+            # Pre-fix Python skipped strict on this branch; TS+Rust both
+            # inject. Now uniform.
+            if self._strict:
+                result["additionalProperties"] = False
+            return result
 
         # Inline $refs if present
         if "$defs" in schema:
