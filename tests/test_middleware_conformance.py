@@ -30,7 +30,8 @@ def _load_fixture() -> dict:
     if not _FIXTURE_PATH.is_file():
         pytest.skip(
             f"conformance fixture not found at {_FIXTURE_PATH} — "
-            "is the apcore-mcp monorepo checked out alongside apcore-mcp-python?"
+            "is the apcore-mcp monorepo checked out alongside apcore-mcp-python?",
+            allow_module_level=True,
         )
     with _FIXTURE_PATH.open() as fh:
         return json.load(fh)

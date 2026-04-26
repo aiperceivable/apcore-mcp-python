@@ -21,7 +21,7 @@ _FIXTURE_PATH = Path(__file__).resolve().parents[2] / "apcore-mcp" / "conformanc
 
 def _load_fixture() -> dict:
     if not _FIXTURE_PATH.is_file():
-        pytest.skip(f"conformance fixture not found at {_FIXTURE_PATH}")
+        pytest.skip(f"conformance fixture not found at {_FIXTURE_PATH}", allow_module_level=True)
     with _FIXTURE_PATH.open() as fh:
         return json.load(fh)
 
