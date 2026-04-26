@@ -108,7 +108,7 @@ class ExecutionRouter:
         # handle_call) are typically released within seconds, so eviction
         # in practice only impacts tombstones — which have no semantic
         # cost beyond the race-window protection.
-        self._cancel_tokens: "OrderedDict[str, CancelToken]" = OrderedDict()
+        self._cancel_tokens: OrderedDict[str, CancelToken] = OrderedDict()
         self._cancel_lock = threading.Lock()
 
         # Cache whether executor methods accept a context parameter,

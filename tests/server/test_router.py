@@ -1160,10 +1160,10 @@ class TestCancellation:
         # No leftover entries
         assert len(router._cancel_tokens) == 0
 
-
     async def test_cancel_tombstone_eviction_bounded(self) -> None:
         """[B-002] Repeated cancel on unknown ids must be bounded."""
         from apcore_mcp.server.router import _CANCEL_TOKENS_MAX
+
         router = ExecutionRouter(StubExecutor(results={"m": {}}))
         # Spam tombstones beyond the cap
         for i in range(_CANCEL_TOKENS_MAX + 100):
