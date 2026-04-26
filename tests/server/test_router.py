@@ -1127,3 +1127,34 @@ class TestAsyncBridgeRouterIntegration:
 
         envelope = _json.loads(content[0]["text"])
         assert envelope == {"task_id": "task-xyz", "status": "pending"}
+
+
+class TestCancellation:
+    """[B-002] Router-level cancel(call_id, reason) cooperative cancellation."""
+
+    async def test_cancel_known_call_id_marks_token(self) -> None:
+        """cancel() on a registered call_id sets the token; returns True."""
+        router = ExecutionRouter(StubExecutor(results={"m": {}}))
+        # Manually register a token (mimics what handle_call does).
+        from apcore import CancelToken
+        token = CancelToken()
+        router._cancel_tokens["call-1"] = token
+        ok = router.cancel("call-1", reason="user abort")
+        assert ok is True
+        assert token.is_cancelled is True
+
+    async def test_cancel_unknown_call_id_stores_tombstone(self) -> None:
+        """cancel() before submit records a tombstone; returns False."""
+        router = ExecutionRouter(StubExecutor(results={"m": {}}))
+        ok = router.cancel("call-future", reason="early")
+        assert ok is False
+        # Tombstone must be cancelled
+        tombstone = router._cancel_tokens["call-future"]
+        assert tombstone.is_cancelled is True
+
+    async def test_handle_call_clears_cancel_token_on_completion(self) -> None:
+        """The call_id slot is freed after handle_call returns."""
+        router = ExecutionRouter(StubExecutor(results={"m": {"ok": True}}))
+        await router.handle_call("m", {})
+        # No leftover entries
+        assert len(router._cancel_tokens) == 0

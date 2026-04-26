@@ -5,10 +5,12 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import threading
+import uuid
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from apcore import Context
+from apcore import CancelToken, Context
 from apcore.trace_context import TraceContext, TraceParent
 
 from apcore_mcp.adapters.errors import ErrorMapper
@@ -88,6 +90,13 @@ class ExecutionRouter:
         # async-hinted modules. [A-D-001]
         self._async_bridge = async_bridge
         self._descriptor_lookup = descriptor_lookup
+
+        # [B-002] Per-server `call_id -> CancelToken` map. Populated on
+        # tool-call entry by handle_call(); consulted by cancel(call_id).
+        # The transport layer forwards inbound MCP `notifications/cancelled`
+        # to `router.cancel(call_id, reason)` which sets the token.
+        self._cancel_tokens: dict[str, CancelToken] = {}
+        self._cancel_lock = threading.Lock()
 
         # Cache whether executor methods accept a context parameter,
         # so we avoid a broad TypeError catch on every call.
@@ -321,6 +330,37 @@ class ExecutionRouter:
 
         context = Context.create(data=context_data, identity=identity, trace_parent=trace_parent)
 
+        # [B-002] Register a CancelToken for this call so that an inbound
+        # MCP `notifications/cancelled` (forwarded by the transport into
+        # `router.cancel(call_id, reason)`) cooperatively cancels in-flight
+        # work. The call_id is sourced from `extras.call_id`,
+        # `_meta.progressToken`, or generated. Removed in `finally`.
+        call_id: str | None = None
+        if extra is not None:
+            raw_id = extra.get("call_id")
+            if isinstance(raw_id, (str, int)):
+                call_id = str(raw_id)
+            else:
+                meta = extra.get("_meta")
+                if isinstance(meta, dict):
+                    pt = meta.get("progressToken")
+                    if isinstance(pt, (str, int)):
+                        call_id = str(pt)
+        if call_id is None:
+            call_id = uuid.uuid4().hex
+        cancel_token = CancelToken()
+        with self._cancel_lock:
+            # Tombstone case: cancel arrived before the token was
+            # registered (race). When `_cancel_tokens[call_id]` is already
+            # set with `is_cancelled=True`, propagate that state to the
+            # new token so the dispatch sees an already-cancelled call.
+            existing = self._cancel_tokens.get(call_id)
+            if existing is not None and existing.is_cancelled:
+                cancel_token.cancel()
+            self._cancel_tokens[call_id] = cancel_token
+        # Attach the token to the Context so executor can check it.
+        context.cancel_token = cancel_token
+
         # version_hint resolution per spec's 3-source cascade: [A-D-006]
         #   1. extras.version_hint (SDK caller-supplied, highest priority)
         #   2. extras._meta.apcore.version (MCP client-supplied)
@@ -383,18 +423,70 @@ class ExecutionRouter:
         # Streaming path: executor has stream() AND we have both helpers
         can_stream = hasattr(self._executor, "stream") and progress_token is not None and send_notification is not None
 
-        if can_stream:
-            return await self._handle_stream(
-                tool_name,
-                arguments,
-                progress_token,  # type: ignore[arg-type]
-                send_notification,  # type: ignore[arg-type]
-                context=context,
-                version_hint=version_hint,
-            )
+        try:
+            if can_stream:
+                return await self._handle_stream(
+                    tool_name,
+                    arguments,
+                    progress_token,  # type: ignore[arg-type]
+                    send_notification,  # type: ignore[arg-type]
+                    context=context,
+                    version_hint=version_hint,
+                )
 
-        # Non-streaming path
-        return await self._handle_call_async(tool_name, arguments, context=context, version_hint=version_hint)
+            # Non-streaming path
+            return await self._handle_call_async(tool_name, arguments, context=context, version_hint=version_hint)
+        finally:
+            # [B-002] Always release the call_id → CancelToken slot so the
+            # map doesn't grow unboundedly and a later same-id call doesn't
+            # see a stale token.
+            with self._cancel_lock:
+                self._cancel_tokens.pop(call_id, None)
+
+    def cancel(self, call_id: str, reason: str | None = None) -> bool:
+        """Cancel an in-flight tool call cooperatively. [B-002]
+
+        Looks up the CancelToken registered for *call_id* in handle_call
+        and calls ``token.cancel()``. Subsequent calls to
+        ``token.check()`` (or ``ctx.cancel_token.check()`` from inside
+        the executing module) will raise ``ExecutionCancelledError``,
+        which the router's error mapper converts to MCP error code
+        ``EXECUTION_CANCELLED``.
+
+        When *call_id* is unknown (cancel arrived before submit, or
+        after the call already completed), the router records a
+        tombstone so a subsequent submit with the same id sees an
+        already-cancelled token. After-complete cancels are a no-op.
+
+        Returns True when a token was found and cancelled; False when
+        the call_id was unknown (tombstone recorded).
+
+        Wired by transport-level handlers parsing inbound MCP
+        ``notifications/cancelled`` messages.
+        """
+        with self._cancel_lock:
+            existing = self._cancel_tokens.get(call_id)
+            if existing is not None:
+                existing.cancel()
+                logger.debug(
+                    "router.cancel: cancelled in-flight call_id=%s reason=%s",
+                    call_id,
+                    reason,
+                )
+                return True
+            # Tombstone: store an already-cancelled token so a same-id
+            # submit immediately sees cancellation. Bounded growth is
+            # not a concern in practice (tombstones are rare), but
+            # production deployments may want a TTL eviction.
+            tombstone = CancelToken()
+            tombstone.cancel()
+            self._cancel_tokens[call_id] = tombstone
+            logger.debug(
+                "router.cancel: tombstone for unknown call_id=%s reason=%s",
+                call_id,
+                reason,
+            )
+            return False
 
     @staticmethod
     def _attach_traceparent(content: list[dict[str, Any]], context: Any | None) -> None:
