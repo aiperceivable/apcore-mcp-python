@@ -993,3 +993,128 @@ class TestVersionHintPassthrough:
         extra = {"version_hint": "3.0.0", "_meta": {"apcore": {"version": "2.1.0"}}}
         await router.handle_call("test.module", {}, extra=extra)
         assert captured["version_hint"] == "3.0.0"
+
+    async def test_version_hint_descriptor_default_fallback(self) -> None:
+        """[A-D-006] Descriptor metadata.version_hint is the lowest-priority source."""
+        captured: dict[str, Any] = {}
+
+        class FakeDescriptor:
+            metadata = {"version_hint": "1.5.0"}
+
+        class FakeRegistry:
+            def get_definition(self, module_id: str) -> Any:
+                return FakeDescriptor()
+
+        class CapturingExecutor:
+            registry = FakeRegistry()
+
+            async def call_async(
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["version_hint"] = version_hint
+                return {"ok": True}
+
+        router = ExecutionRouter(CapturingExecutor())
+        # No version_hint in extras and no _meta — descriptor default kicks in.
+        await router.handle_call("versioned.mod", {})
+        assert captured["version_hint"] == "1.5.0"
+
+
+class TestAsyncBridgeRouterIntegration:
+    """[A-D-001] Defense-in-depth: ExecutionRouter dispatches to AsyncTaskBridge
+    when constructed directly with one (the canonical production path
+    dispatches at the factory layer; this test covers direct router users)."""
+
+    async def test_meta_tool_dispatched_to_bridge(self) -> None:
+        """When async_bridge is wired and tool_name is a meta-tool, route there."""
+        from typing import Any
+
+        captured: dict[str, Any] = {}
+
+        class FakeBridge:
+            @staticmethod
+            def is_meta_tool(name: str) -> bool:
+                return name == "__apcore_task_status"
+
+            @staticmethod
+            def is_async_module(_: Any) -> bool:
+                return False
+
+            async def handle_meta_tool(
+                self,
+                name: str,
+                arguments: dict[str, Any],
+                *,
+                resolve_descriptor: Any = None,
+                router_extra: Any = None,
+            ) -> tuple[list[dict[str, Any]], bool, str | None]:
+                captured["bridge_called"] = True
+                captured["name"] = name
+                captured["args"] = arguments
+                return ([{"type": "text", "text": "from-bridge"}], False, None)
+
+        class StubExec:
+            async def call_async(
+                self, module_id: str, inputs: dict[str, Any], context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["call_async_invoked"] = True
+                return {}
+
+        router = ExecutionRouter(StubExec(), async_bridge=FakeBridge())
+        content, is_error, _ = await router.handle_call(
+            "__apcore_task_status", {"task_id": "t1"}
+        )
+        assert is_error is False
+        assert captured.get("bridge_called") is True
+        assert captured["name"] == "__apcore_task_status"
+        assert "call_async_invoked" not in captured  # never reached executor
+        assert content[0]["text"] == "from-bridge"
+
+    async def test_async_hinted_module_routed_via_bridge_submit(self) -> None:
+        """Async-hinted module dispatches to bridge.submit, returning task envelope."""
+        from typing import Any
+
+        captured: dict[str, Any] = {}
+
+        class FakeBridge:
+            @staticmethod
+            def is_meta_tool(_: str) -> bool:
+                return False
+
+            @staticmethod
+            def is_async_module(_: Any) -> bool:
+                return True
+
+            async def submit(
+                self, module_id: str, arguments: dict[str, Any], context: Any,
+                *, progress_token: Any = None, send_notification: Any = None,
+            ) -> dict[str, Any]:
+                captured["bridge_submit"] = True
+                return {"task_id": "task-xyz", "status": "pending"}
+
+        class StubExec:
+            async def call_async(
+                self, module_id: str, inputs: dict[str, Any], context: Any = None,
+                version_hint: str | None = None,
+            ) -> Any:
+                captured["call_async_invoked"] = True
+                return {}
+
+        descriptor_lookup = lambda _: object()  # noqa: E731 — non-None descriptor
+        router = ExecutionRouter(
+            StubExec(), async_bridge=FakeBridge(), descriptor_lookup=descriptor_lookup,
+        )
+        content, is_error, _ = await router.handle_call("heavy.module", {})
+        assert is_error is False
+        assert captured.get("bridge_submit") is True
+        assert "call_async_invoked" not in captured
+        # Envelope is JSON-serialized into the text content.
+        import json as _json
+
+        envelope = _json.loads(content[0]["text"])
+        assert envelope == {"task_id": "task-xyz", "status": "pending"}

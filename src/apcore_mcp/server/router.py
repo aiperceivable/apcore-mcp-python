@@ -70,6 +70,8 @@ class ExecutionRouter:
         redact_output: bool = True,
         output_schema_map: dict[str, dict] | None = None,
         trace: bool = False,
+        async_bridge: Any | None = None,
+        descriptor_lookup: Callable[[str], Any] | None = None,
     ) -> None:
         self._executor = executor
         self._error_mapper = ErrorMapper()
@@ -78,6 +80,14 @@ class ExecutionRouter:
         self._redact_output = redact_output
         self._output_schema_map = output_schema_map or {}
         self._trace = trace
+        # F-043 AsyncTaskBridge integration. The canonical production path
+        # also dispatches at the factory's `register_handlers` callsite
+        # (server/factory.py), but the router holds the bridge too as
+        # defense-in-depth for direct callers. When both layers are wired,
+        # the factory's dispatch fires first and the router never sees
+        # async-hinted modules. [A-D-001]
+        self._async_bridge = async_bridge
+        self._descriptor_lookup = descriptor_lookup
 
         # Cache whether executor methods accept a context parameter,
         # so we avoid a broad TypeError catch on every call.
@@ -197,6 +207,44 @@ class ExecutionRouter:
         """
         logger.debug("Executing tool call: %s", tool_name)
 
+        # ── F-043 AsyncTaskBridge dispatch (defense-in-depth) ────────────
+        # The canonical production path dispatches at the factory's
+        # register_handlers callsite, but if the router was constructed
+        # directly (by tests or third-party callers) and given a bridge,
+        # we honour the same dispatch contract here. [A-D-001]
+        if self._async_bridge is not None:
+            # Meta-tool path: __apcore_task_submit / _status / _cancel / _list
+            if self._async_bridge.is_meta_tool(tool_name):
+                return await self._async_bridge.handle_meta_tool(
+                    tool_name,
+                    arguments,
+                    resolve_descriptor=self._descriptor_lookup,
+                    router_extra=extra,
+                )
+            # Async-hinted module path: route via bridge.submit
+            if self._descriptor_lookup is not None:
+                try:
+                    descriptor = self._descriptor_lookup(tool_name)
+                except Exception:  # noqa: BLE001  # defensive lookup
+                    descriptor = None
+                if descriptor is not None and self._async_bridge.is_async_module(descriptor):
+                    submit_ctx = Context.create(
+                        data={},
+                        identity=(extra or {}).get("identity"),
+                    )
+                    try:
+                        envelope = await self._async_bridge.submit(
+                            tool_name,
+                            arguments,
+                            submit_ctx,
+                            progress_token=(extra or {}).get("progress_token"),
+                            send_notification=(extra or {}).get("send_notification"),
+                        )
+                        return ([{"type": "text", "text": json.dumps(envelope)}], False, None)
+                    except Exception as exc:  # noqa: BLE001
+                        info = self._error_mapper.to_mcp_error(exc)
+                        return ([{"type": "text", "text": info["message"]}], True, None)
+
         # Extract streaming helpers from extra
         progress_token: str | int | None = None
         send_notification: Callable[[dict[str, Any]], Coroutine[Any, Any, None]] | None = None
@@ -273,6 +321,11 @@ class ExecutionRouter:
 
         context = Context.create(data=context_data, identity=identity, trace_parent=trace_parent)
 
+        # version_hint resolution per spec's 3-source cascade: [A-D-006]
+        #   1. extras.version_hint (SDK caller-supplied, highest priority)
+        #   2. extras._meta.apcore.version (MCP client-supplied)
+        #   3. descriptor.metadata.version_hint (descriptor default, lowest)
+        # Pre-fix Python only consulted #1 and #2; #3 was never read.
         version_hint: str | None = None
         if extra is not None:
             version_hint = extra.get("version_hint")
@@ -282,6 +335,21 @@ class ExecutionRouter:
                     apcore_meta = meta.get("apcore")
                     if isinstance(apcore_meta, dict):
                         raw = apcore_meta.get("version")
+                        if isinstance(raw, str):
+                            version_hint = raw
+        # Source #3: descriptor default fallback
+        if version_hint is None:
+            registry = getattr(self._executor, "registry", None)
+            if registry is not None:
+                get_def = getattr(registry, "get_definition", None)
+                if callable(get_def):
+                    try:
+                        descriptor = get_def(tool_name)
+                    except Exception:  # noqa: BLE001  # defensive — registry may raise
+                        descriptor = None
+                    if descriptor is not None:
+                        meta_attr = getattr(descriptor, "metadata", None) or {}
+                        raw = meta_attr.get("version_hint") if isinstance(meta_attr, dict) else None
                         if isinstance(raw, str):
                             version_hint = raw
 
