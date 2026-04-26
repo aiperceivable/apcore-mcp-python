@@ -99,7 +99,7 @@ class AsyncTaskBridge:
         max_concurrent: int = DEFAULT_MAX_CONCURRENT,
         max_tasks: int = DEFAULT_MAX_TASKS,
         redactor: Callable[[str, Any], Any] | None = None,
-    ) -> "AsyncTaskBridge":
+    ) -> AsyncTaskBridge:
         """Construct a bridge with explicit AsyncTaskManager limits.
 
         Provides parity with Rust's ``AsyncTaskBridge::with_limits`` and
