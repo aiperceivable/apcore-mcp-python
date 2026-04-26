@@ -46,18 +46,32 @@ class OpenAIConverter:
         """
         module_ids = registry.list(tags=tags, prefix=prefix)
         tools: list[dict[str, Any]] = []
+        # [OC-3] Track normalized names so we can detect collisions.
+        # OpenAI function names must be unique post-normalization
+        # (dot→hyphen). E.g. `a.b` and `a-b` both normalize to `a-b`;
+        # without this guard we'd silently emit two tools with identical
+        # function.name, producing undefined OpenAI behavior.
+        seen_names: dict[str, str] = {}
 
         for module_id in module_ids:
             descriptor = registry.get_definition(module_id)
             if descriptor is None:
                 continue
-            tools.append(
-                self.convert_descriptor(
-                    descriptor,
-                    embed_annotations=embed_annotations,
-                    strict=strict,
-                )
+            tool = self.convert_descriptor(
+                descriptor,
+                embed_annotations=embed_annotations,
+                strict=strict,
             )
+            tool_name = tool["function"]["name"]
+            if tool_name in seen_names and seen_names[tool_name] != module_id:
+                raise ValueError(
+                    f"OpenAI function-name collision: module ids "
+                    f"{seen_names[tool_name]!r} and {module_id!r} both normalize "
+                    f"to {tool_name!r}. OpenAI requires unique function names; "
+                    f"rename one of the modules to avoid the collision."
+                )
+            seen_names[tool_name] = module_id
+            tools.append(tool)
 
         return tools
 
