@@ -30,33 +30,37 @@ class AnnotationMapper:
     def to_mcp_annotations(self, annotations: Any | None) -> dict[str, Any]:
         """Convert ModuleAnnotations to MCP ToolAnnotations dict.
 
+        Returns dict keys in **camelCase** to match the MCP wire format
+        and align with the TypeScript and Rust SDKs (which both emit
+        camelCase). [AM-1]
+
         Args:
             annotations: ModuleAnnotations instance or None
 
         Returns:
             Dict with MCP ToolAnnotations fields:
-            - read_only_hint: bool | None
-            - destructive_hint: bool | None
-            - idempotent_hint: bool | None
-            - open_world_hint: bool | None
+            - readOnlyHint: bool | None
+            - destructiveHint: bool | None
+            - idempotentHint: bool | None
+            - openWorldHint: bool | None
             - title: str | None
         """
         # Default values when annotations is None
         if annotations is None:
             return {
-                "read_only_hint": False,
-                "destructive_hint": False,
-                "idempotent_hint": False,
-                "open_world_hint": True,
+                "readOnlyHint": False,
+                "destructiveHint": False,
+                "idempotentHint": False,
+                "openWorldHint": True,
                 "title": None,
             }
 
-        # Map apcore ModuleAnnotations to MCP ToolAnnotations
+        # Map apcore ModuleAnnotations to MCP ToolAnnotations (camelCase)
         return {
-            "read_only_hint": annotations.readonly,
-            "destructive_hint": annotations.destructive,
-            "idempotent_hint": annotations.idempotent,
-            "open_world_hint": annotations.open_world,
+            "readOnlyHint": annotations.readonly,
+            "destructiveHint": annotations.destructive,
+            "idempotentHint": annotations.idempotent,
+            "openWorldHint": annotations.open_world,
             "title": None,  # MCP title is not mapped from apcore annotations
         }
 

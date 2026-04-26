@@ -17,54 +17,54 @@ class TestAnnotationMapper:
         return AnnotationMapper()
 
     def test_readonly_annotation(self, mapper: AnnotationMapper) -> None:
-        """Test readonly annotation maps to read_only_hint=True."""
+        """Test readonly annotation maps to readOnlyHint=True."""
         annotations = ModuleAnnotations(readonly=True)
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": True,
-            "destructive_hint": False,
-            "idempotent_hint": False,
-            "open_world_hint": True,
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
             "title": None,
         }
 
     def test_destructive_annotation(self, mapper: AnnotationMapper) -> None:
-        """Test destructive annotation maps to destructive_hint=True."""
+        """Test destructive annotation maps to destructiveHint=True."""
         annotations = ModuleAnnotations(destructive=True)
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": True,
-            "idempotent_hint": False,
-            "open_world_hint": True,
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
             "title": None,
         }
 
     def test_idempotent_annotation(self, mapper: AnnotationMapper) -> None:
-        """Test idempotent annotation maps to idempotent_hint=True."""
+        """Test idempotent annotation maps to idempotentHint=True."""
         annotations = ModuleAnnotations(idempotent=True)
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": False,
-            "idempotent_hint": True,
-            "open_world_hint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
             "title": None,
         }
 
     def test_open_world_false(self, mapper: AnnotationMapper) -> None:
-        """Test open_world=False maps to open_world_hint=False."""
+        """Test open_world=False maps to openWorldHint=False."""
         annotations = ModuleAnnotations(open_world=False)
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": False,
-            "idempotent_hint": False,
-            "open_world_hint": False,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
             "title": None,
         }
 
@@ -74,10 +74,10 @@ class TestAnnotationMapper:
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": False,
-            "idempotent_hint": False,
-            "open_world_hint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
             "title": None,
         }
 
@@ -86,10 +86,10 @@ class TestAnnotationMapper:
         result = mapper.to_mcp_annotations(None)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": False,
-            "idempotent_hint": False,
-            "open_world_hint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
             "title": None,
         }
 
@@ -103,10 +103,10 @@ class TestAnnotationMapper:
         result = mapper.to_mcp_annotations(annotations)
 
         assert result == {
-            "read_only_hint": False,
-            "destructive_hint": True,
-            "idempotent_hint": False,
-            "open_world_hint": False,
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": False,
             "title": None,
         }
 
