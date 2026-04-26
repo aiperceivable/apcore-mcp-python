@@ -338,13 +338,13 @@ class ExecutionRouter:
         call_id: str | None = None
         if extra is not None:
             raw_id = extra.get("call_id")
-            if isinstance(raw_id, (str, int)):
+            if isinstance(raw_id, str | int):
                 call_id = str(raw_id)
             else:
                 meta = extra.get("_meta")
                 if isinstance(meta, dict):
                     pt = meta.get("progressToken")
-                    if isinstance(pt, (str, int)):
+                    if isinstance(pt, str | int):
                         call_id = str(pt)
         if call_id is None:
             call_id = uuid.uuid4().hex

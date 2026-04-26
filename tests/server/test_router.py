@@ -1137,6 +1137,7 @@ class TestCancellation:
         router = ExecutionRouter(StubExecutor(results={"m": {}}))
         # Manually register a token (mimics what handle_call does).
         from apcore import CancelToken
+
         token = CancelToken()
         router._cancel_tokens["call-1"] = token
         ok = router.cancel("call-1", reason="user abort")
