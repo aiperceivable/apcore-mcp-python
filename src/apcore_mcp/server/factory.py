@@ -50,7 +50,13 @@ class MCPServerFactory:
         """
         return Server(name)
 
-    def build_tool(self, descriptor: Any) -> mcp_types.Tool:
+    def build_tool(
+        self,
+        descriptor: Any,
+        *,
+        registry: Any | None = None,
+        strict: bool = True,
+    ) -> mcp_types.Tool:
         """Build an MCP Tool from a ModuleDescriptor.
 
         Mapping:
@@ -70,7 +76,29 @@ class MCPServerFactory:
         # Reject reserved-prefix ids so user modules cannot shadow async meta-tools.
         if getattr(descriptor, "module_id", "").startswith(RESERVED_PREFIX):
             raise ValueError(f"Module id {descriptor.module_id!r} uses reserved prefix {RESERVED_PREFIX!r}")
-        input_schema = self._schema_converter.convert_input_schema(descriptor)
+
+        # [A-D-012] Strict-Schema-Sourcing: prefer the registry's
+        # `export_schema(module_id, strict=True)` when available, matching
+        # the TypeScript factory and the spec at
+        # docs/features/mcp-server-factory.md "Strict Schema Sourcing".
+        # Falls back to local SchemaConverter when the registry doesn't
+        # expose export_schema or the call fails.
+        input_schema: Any | None = None
+        if strict and registry is not None and callable(getattr(registry, "export_schema", None)):
+            try:
+                exported = registry.export_schema(descriptor.module_id, strict=True)
+                if isinstance(exported, dict):
+                    candidate = exported.get("input_schema") or exported.get("inputSchema")
+                    if isinstance(candidate, dict):
+                        input_schema = candidate
+            except Exception as exc:  # noqa: BLE001 — fall through to local converter
+                logger.debug(
+                    "registry.export_schema(strict=True) raised for %s; falling back to local converter: %s",
+                    descriptor.module_id,
+                    exc,
+                )
+        if input_schema is None:
+            input_schema = self._schema_converter.convert_input_schema(descriptor)
 
         # NOTE: Python uses SchemaExporter.export_mcp() for annotation mapping,
         # while TypeScript uses AnnotationMapper.toMcpAnnotations() directly.
@@ -161,7 +189,9 @@ class MCPServerFactory:
                 logger.warning("Skipped module %s: no definition found", module_id)
                 continue
             try:
-                tools.append(self.build_tool(descriptor))
+                # [A-D-012] Pass the registry so build_tool can prefer
+                # registry.export_schema(strict=True) over local conversion.
+                tools.append(self.build_tool(descriptor, registry=registry))
             except ValueError as e:
                 # Reserved-prefix violations are hard config errors — re-raise so
                 # misconfiguration is visible at startup rather than silently
