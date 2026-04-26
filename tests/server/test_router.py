@@ -1031,7 +1031,6 @@ class TestAsyncBridgeRouterIntegration:
 
     async def test_meta_tool_dispatched_to_bridge(self) -> None:
         """When async_bridge is wired and tool_name is a meta-tool, route there."""
-        from typing import Any
 
         captured: dict[str, Any] = {}
 
@@ -1059,16 +1058,17 @@ class TestAsyncBridgeRouterIntegration:
 
         class StubExec:
             async def call_async(
-                self, module_id: str, inputs: dict[str, Any], context: Any = None,
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
                 version_hint: str | None = None,
             ) -> Any:
                 captured["call_async_invoked"] = True
                 return {}
 
         router = ExecutionRouter(StubExec(), async_bridge=FakeBridge())
-        content, is_error, _ = await router.handle_call(
-            "__apcore_task_status", {"task_id": "t1"}
-        )
+        content, is_error, _ = await router.handle_call("__apcore_task_status", {"task_id": "t1"})
         assert is_error is False
         assert captured.get("bridge_called") is True
         assert captured["name"] == "__apcore_task_status"
@@ -1077,7 +1077,6 @@ class TestAsyncBridgeRouterIntegration:
 
     async def test_async_hinted_module_routed_via_bridge_submit(self) -> None:
         """Async-hinted module dispatches to bridge.submit, returning task envelope."""
-        from typing import Any
 
         captured: dict[str, Any] = {}
 
@@ -1091,15 +1090,23 @@ class TestAsyncBridgeRouterIntegration:
                 return True
 
             async def submit(
-                self, module_id: str, arguments: dict[str, Any], context: Any,
-                *, progress_token: Any = None, send_notification: Any = None,
+                self,
+                module_id: str,
+                arguments: dict[str, Any],
+                context: Any,
+                *,
+                progress_token: Any = None,
+                send_notification: Any = None,
             ) -> dict[str, Any]:
                 captured["bridge_submit"] = True
                 return {"task_id": "task-xyz", "status": "pending"}
 
         class StubExec:
             async def call_async(
-                self, module_id: str, inputs: dict[str, Any], context: Any = None,
+                self,
+                module_id: str,
+                inputs: dict[str, Any],
+                context: Any = None,
                 version_hint: str | None = None,
             ) -> Any:
                 captured["call_async_invoked"] = True
@@ -1107,7 +1114,9 @@ class TestAsyncBridgeRouterIntegration:
 
         descriptor_lookup = lambda _: object()  # noqa: E731 — non-None descriptor
         router = ExecutionRouter(
-            StubExec(), async_bridge=FakeBridge(), descriptor_lookup=descriptor_lookup,
+            StubExec(),
+            async_bridge=FakeBridge(),
+            descriptor_lookup=descriptor_lookup,
         )
         content, is_error, _ = await router.handle_call("heavy.module", {})
         assert is_error is False
