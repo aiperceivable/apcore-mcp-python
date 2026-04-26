@@ -85,6 +85,11 @@ class AsyncTaskBridge:
         self._error_mapper = ErrorMapper()
         # Maps task_id -> (progress_token, send_notification) for fan-out.
         self._progress_bindings: dict[str, tuple[Any, Callable[[dict[str, Any]], Awaitable[None]]]] = {}
+        # [A-D-019] Maps session/connection key -> list of task ids
+        # launched from that session. Used by cancel_session_tasks() to
+        # mass-cancel tasks bound to a transport on disconnect.
+        # Mirrors Rust's `session_tasks` map.
+        self._session_tasks: dict[str, list[str]] = {}
 
     @classmethod
     def with_limits(
@@ -139,12 +144,45 @@ class AsyncTaskBridge:
         *,
         progress_token: Any | None = None,
         send_notification: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        session_key: str | None = None,
     ) -> dict[str, Any]:
-        """Submit *module_id* to the task manager; returns ``{task_id, status}`` envelope."""
+        """Submit *module_id* to the task manager; returns ``{task_id, status}`` envelope.
+
+        When *session_key* is provided, the resulting task_id is recorded
+        in :attr:`_session_tasks` so :meth:`cancel_session_tasks` can
+        mass-cancel tasks bound to that session on transport disconnect.
+        [A-D-019]
+        """
         task_id = await self._submit_with_progress(
             module_id, arguments, context, progress_token=progress_token, send_notification=send_notification
         )
+        if session_key is not None:
+            self._session_tasks.setdefault(session_key, []).append(task_id)
         return {"task_id": task_id, "status": TaskStatus.PENDING.value}
+
+    async def cancel_session_tasks(self, session_key: str) -> int:
+        """Cancel every async task currently tracked under *session_key*.
+
+        Used by the transport layer on client disconnect to ensure
+        long-running tasks bound to that session don't keep running after
+        the client has gone. Returns the number of tasks actually
+        cancelled. Mirrors Rust's
+        :meth:`AsyncTaskBridge.cancel_session_tasks` and TypeScript's
+        :meth:`AsyncTaskBridge.cancelSessionTasks`. [A-D-019]
+        """
+        task_ids = self._session_tasks.pop(session_key, None)
+        if not task_ids:
+            return 0
+        cancelled = 0
+        for task_id in task_ids:
+            try:
+                ok = await self._manager.cancel(task_id)
+                if ok:
+                    cancelled += 1
+            except Exception:  # noqa: BLE001  # cancel may fail if task already done
+                pass
+            self._progress_bindings.pop(task_id, None)
+        return cancelled
 
     async def _submit_with_progress(
         self,
