@@ -71,6 +71,9 @@ class AsyncTaskBridge:
     - progress fan-out via ``task_id -> progressToken`` mapping.
     """
 
+    DEFAULT_MAX_CONCURRENT = 10
+    DEFAULT_MAX_TASKS = 1000
+
     def __init__(
         self,
         manager: AsyncTaskManager,
@@ -82,6 +85,27 @@ class AsyncTaskBridge:
         self._error_mapper = ErrorMapper()
         # Maps task_id -> (progress_token, send_notification) for fan-out.
         self._progress_bindings: dict[str, tuple[Any, Callable[[dict[str, Any]], Awaitable[None]]]] = {}
+
+    @classmethod
+    def with_limits(
+        cls,
+        executor: Any,
+        *,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+        max_tasks: int = DEFAULT_MAX_TASKS,
+        redactor: Callable[[str, Any], Any] | None = None,
+    ) -> "AsyncTaskBridge":
+        """Construct a bridge with explicit AsyncTaskManager limits.
+
+        Provides parity with Rust's ``AsyncTaskBridge::with_limits`` and
+        TypeScript's ``createAsyncTaskBridge({maxConcurrent, maxTasks})``.
+        Pre-fix Python relied on the caller to construct an
+        :class:`AsyncTaskManager` with the desired limits before passing
+        it in — the spec's capacity-exceeded contract therefore depended
+        on caller correctness. [A-D-028]
+        """
+        manager = AsyncTaskManager(executor, max_concurrent, max_tasks)
+        return cls(manager, redactor=redactor)
 
     @property
     def manager(self) -> AsyncTaskManager:
@@ -186,7 +210,9 @@ class AsyncTaskBridge:
                         "arguments": {"type": "object"},
                         "version_hint": {"type": "string"},
                     },
-                    "required": ["module_id", "arguments"],
+                    # `arguments` is optional — callers may submit a module
+                    # with no inputs. Aligned with TS+Rust schemas. [A-D-022]
+                    "required": ["module_id"],
                     "additionalProperties": False,
                 },
             ),
@@ -265,6 +291,17 @@ class AsyncTaskBridge:
         module_id = args.get("module_id")
         if not isinstance(module_id, str) or not module_id:
             return self._error_response(ValueError("module_id is required"))
+        # Reject reserved __apcore_ prefix in submitted module_ids — the
+        # async-task meta-tool namespace is owned by this bridge and must
+        # not be wrapped as a user-submitted async task. TS and Rust both
+        # enforce this guard. [A-D-015]
+        if module_id.startswith(RESERVED_PREFIX):
+            return self._error_response(
+                ValueError(
+                    f"Reserved module id: {module_id!r}; the {RESERVED_PREFIX!r} "
+                    "prefix is owned by the apcore-mcp async task bridge."
+                )
+            )
         # Guard: reject wrapping non-async modules in async submission.
         if resolve_descriptor is not None:
             descriptor = resolve_descriptor(module_id)
