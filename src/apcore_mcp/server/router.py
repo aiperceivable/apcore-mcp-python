@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 import uuid
+from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -19,6 +20,11 @@ from apcore_mcp.helpers import MCP_ELICIT_KEY, MCP_PROGRESS_KEY
 logger = logging.getLogger(__name__)
 
 _DEEP_MERGE_MAX_DEPTH = 32
+# [B-002] Maximum number of cancel-token entries (active + tombstones)
+# kept in the per-router map. When exceeded, oldest entries are evicted
+# in FIFO order. Tombstones for unknown call_ids accumulate here, so
+# without an eviction cap a long-running server would leak memory.
+_CANCEL_TOKENS_MAX = 4096
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any], depth: int = 0) -> dict[str, Any]:
@@ -95,7 +101,14 @@ class ExecutionRouter:
         # tool-call entry by handle_call(); consulted by cancel(call_id).
         # The transport layer forwards inbound MCP `notifications/cancelled`
         # to `router.cancel(call_id, reason)` which sets the token.
-        self._cancel_tokens: dict[str, CancelToken] = {}
+        #
+        # OrderedDict gives us FIFO-evicted bounded growth: when the map
+        # exceeds _CANCEL_TOKENS_MAX entries (active + tombstones), the
+        # oldest entries are popped. Active tokens (currently in
+        # handle_call) are typically released within seconds, so eviction
+        # in practice only impacts tombstones — which have no semantic
+        # cost beyond the race-window protection.
+        self._cancel_tokens: "OrderedDict[str, CancelToken]" = OrderedDict()
         self._cancel_lock = threading.Lock()
 
         # Cache whether executor methods accept a context parameter,
@@ -357,7 +370,11 @@ class ExecutionRouter:
             existing = self._cancel_tokens.get(call_id)
             if existing is not None and existing.is_cancelled:
                 cancel_token.cancel()
+            # OrderedDict semantics: re-insertion keeps original position;
+            # explicit move_to_end ensures this entry is LRU-recent.
             self._cancel_tokens[call_id] = cancel_token
+            self._cancel_tokens.move_to_end(call_id)
+            self._evict_cancel_tokens_locked()
         # Attach the token to the Context so executor can check it.
         context.cancel_token = cancel_token
 
@@ -443,6 +460,16 @@ class ExecutionRouter:
             with self._cancel_lock:
                 self._cancel_tokens.pop(call_id, None)
 
+    def _evict_cancel_tokens_locked(self) -> None:
+        """Evict oldest entries when the cancel-tokens map exceeds the cap.
+
+        Caller must hold ``_cancel_lock``. Uses OrderedDict's FIFO
+        ordering — entries are popped from the front (least-recently-
+        inserted) until the size is back within bounds. [B-002]
+        """
+        while len(self._cancel_tokens) > _CANCEL_TOKENS_MAX:
+            self._cancel_tokens.popitem(last=False)
+
     def cancel(self, call_id: str, reason: str | None = None) -> bool:
         """Cancel an in-flight tool call cooperatively. [B-002]
 
@@ -475,12 +502,14 @@ class ExecutionRouter:
                 )
                 return True
             # Tombstone: store an already-cancelled token so a same-id
-            # submit immediately sees cancellation. Bounded growth is
-            # not a concern in practice (tombstones are rare), but
-            # production deployments may want a TTL eviction.
+            # submit immediately sees cancellation. Bounded by
+            # _CANCEL_TOKENS_MAX with FIFO eviction (oldest first) to
+            # prevent leaks when callers spam unknown call_ids.
             tombstone = CancelToken()
             tombstone.cancel()
             self._cancel_tokens[call_id] = tombstone
+            self._cancel_tokens.move_to_end(call_id)
+            self._evict_cancel_tokens_locked()
             logger.debug(
                 "router.cancel: tombstone for unknown call_id=%s reason=%s",
                 call_id,

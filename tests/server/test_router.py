@@ -1159,3 +1159,16 @@ class TestCancellation:
         await router.handle_call("m", {})
         # No leftover entries
         assert len(router._cancel_tokens) == 0
+
+
+    async def test_cancel_tombstone_eviction_bounded(self) -> None:
+        """[B-002] Repeated cancel on unknown ids must be bounded."""
+        from apcore_mcp.server.router import _CANCEL_TOKENS_MAX
+        router = ExecutionRouter(StubExecutor(results={"m": {}}))
+        # Spam tombstones beyond the cap
+        for i in range(_CANCEL_TOKENS_MAX + 100):
+            router.cancel(f"call-{i}")
+        assert len(router._cancel_tokens) <= _CANCEL_TOKENS_MAX
+        # Oldest entries must have been evicted
+        assert "call-0" not in router._cancel_tokens
+        assert f"call-{_CANCEL_TOKENS_MAX + 99}" in router._cancel_tokens
