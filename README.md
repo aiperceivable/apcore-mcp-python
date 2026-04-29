@@ -47,7 +47,7 @@ pip install apcore-mcp
 
 That's it. Your existing project requires no changes.
 
-Requires Python 3.11+ and `apcore >= 0.17.1`.
+Requires Python 3.11+ and `apcore >= 0.19.0`.
 
 ## Quick Start
 
@@ -267,12 +267,21 @@ mcp = APCoreMCP(
     prefix=None,                 # filter modules by ID prefix
     log_level=None,              # logging level ("DEBUG", "INFO", etc.)
     validate_inputs=False,       # validate inputs against schemas
-    metrics_collector=None,      # MetricsExporter for /metrics endpoint
+    metrics_collector=None,      # MetricsExporter | bool — `True` auto-instantiates the collector
+    observability=False,         # enable MetricsMiddleware + UsageMiddleware + /metrics + /api/usage
     authenticator=None,          # Authenticator for JWT/token auth (HTTP only)
     require_auth=True,           # False = permissive mode (no 401)
     exempt_paths=None,           # exact paths that bypass auth
     approval_handler=None,       # approval handler for runtime approval
-    output_formatter=None,        # default: raw JSON; use to_markdown for Markdown
+    output_formatter=None,        # default: None (raw JSON); pass to_markdown to opt into apcore-toolkit Markdown
+    middleware=None,             # list[Middleware] — user middleware applied after built-ins
+    acl=None,                    # apcore.ACL — module access control
+    async_tasks=True,            # enable F-043 Async Task Bridge
+    async_max_concurrent=10,     # max concurrent async tasks
+    async_max_tasks=1000,        # max queued async tasks
+    schema_converter=None,       # override default SchemaConverter (EB-2)
+    annotation_mapper=None,      # override default AnnotationMapper (EB-2)
+    error_mapper=None,           # override default ErrorMapper (EB-2)
 )
 
 # Launch as MCP server (blocking)
@@ -308,15 +317,32 @@ serve(
     tags=None,                   # filter modules by tags
     prefix=None,                 # filter modules by ID prefix
     log_level=None,              # logging level ("DEBUG", "INFO", etc.)
+    dynamic=False,               # rebuild tools on registry events
     validate_inputs=False,       # validate inputs against schemas
-    metrics_collector=None,      # MetricsCollector for /metrics endpoint
+    metrics_collector=None,      # MetricsExporter | bool — `True` auto-instantiates apcore.observability.MetricsCollector
     explorer=False,              # enable browser-based Tool Explorer UI
     explorer_prefix="/explorer", # URL prefix for the explorer
     allow_execute=False,         # allow tool execution from the explorer
+    explorer_title="MCP Tool Explorer",
+    explorer_project_name=None,
+    explorer_project_url=None,
     authenticator=None,          # Authenticator for JWT/token auth (HTTP only)
     require_auth=True,           # False = permissive mode (no 401)
     exempt_paths=None,           # exact paths that bypass auth
     approval_handler=None,       # approval handler for runtime approval
+    output_formatter=None,       # default None (raw JSON); pass apcore_toolkit.to_markdown to opt in
+    strategy=None,               # pipeline strategy preset: "standard" | "internal" | "testing" | "performance" | "minimal"
+    redact_output=True,          # mask x-sensitive / _secret_* fields in outputs
+    trace=False,                 # enable per-call apcore pipeline trace metadata
+    middleware=None,             # list[Middleware] — applied after built-ins
+    acl=None,                    # apcore.ACL — module access control
+    observability=False,         # enable MetricsMiddleware + UsageMiddleware + /metrics + /api/usage
+    async_tasks=True,            # enable F-043 Async Task Bridge
+    async_max_concurrent=10,     # max concurrent async tasks
+    async_max_tasks=1000,        # max queued async tasks
+    schema_converter=None,       # override default SchemaConverter (EB-2)
+    annotation_mapper=None,      # override default AnnotationMapper (EB-2)
+    error_mapper=None,           # override default ErrorMapper (EB-2)
 )
 ```
 
