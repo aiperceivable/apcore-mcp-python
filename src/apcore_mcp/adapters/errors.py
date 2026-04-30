@@ -30,6 +30,17 @@ class ErrorMapper:
         ERROR_CODES["ACL_DENIED"],
     }
 
+    # Error codes that the bridge stamps as userFixable=True.
+    # apcore 0.19 does not set user_fixable on these error classes; the bridge
+    # mirrors the TypeScript errors.ts:241,273 guarantee instead.
+    _USER_FIXABLE_CODES = {
+        "VERSION_CONSTRAINT_INVALID",
+        "BINDING_SCHEMA_INFERENCE_FAILED",
+        "BINDING_SCHEMA_MODE_CONFLICT",
+        "BINDING_STRICT_SCHEMA_INCOMPATIBLE",
+        "BINDING_POLICY_VIOLATION",
+    }
+
     def format(self, error: Exception, context: object = None) -> dict[str, Any]:
         """Format an apcore error into an MCP error response.
 
@@ -83,6 +94,7 @@ class ErrorMapper:
                 "errorType": ERROR_CODES["DEPENDENCY_NOT_FOUND"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
+                "userFixable": True,
             }
         if isinstance(error, DependencyVersionMismatchError):
             return {
@@ -90,6 +102,7 @@ class ErrorMapper:
                 "errorType": ERROR_CODES["DEPENDENCY_VERSION_MISMATCH"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
+                "userFixable": True,
             }
 
         # Check if it's an apcore ModuleError by isinstance (fast path for
@@ -255,6 +268,11 @@ class ErrorMapper:
             "message": message,
             "details": details,
         }
+        # Stamp userFixable=True for codes the bridge guarantees as user-fixable.
+        # This is done before _attach_ai_guidance so that the stamp wins even
+        # when apcore sets user_fixable=None (not yet set) on the error object.
+        if code in self._USER_FIXABLE_CODES:
+            result["userFixable"] = True
         self._attach_ai_guidance(error, result)
         return result
 
