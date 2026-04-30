@@ -527,3 +527,88 @@ class TestTC010ExplorerAuth:
         assert "auth-bar" in response.text
         assert "auth-token" in response.text
         assert "Authorization" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TC-011: POST /explorer/tools/<name>/validate (mcp-embedded-ui 0.4 F7)
+# ---------------------------------------------------------------------------
+
+
+class TestTC011Validate:
+    """The /validate endpoint is owned by mcp-embedded-ui 0.4. These tests
+    verify the route flows through `create_explorer_mount` and validates
+    against the tool's inputSchema. Per F7 spec, validate is NOT gated by
+    `allow_execute` or `auth_hook`."""
+
+    def test_validate_succeeds_with_valid_args(self, explorer_app: Starlette) -> None:
+        client = TestClient(explorer_app)
+        response = client.post(
+            "/explorer/tools/image.resize/validate",
+            json={"width": 100, "height": 200},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"valid": True}
+
+    def test_validate_reports_missing_required(self, explorer_app: Starlette) -> None:
+        client = TestClient(explorer_app)
+        response = client.post(
+            "/explorer/tools/image.resize/validate",
+            json={"width": 100},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["valid"] is False
+        assert any("height" in err.get("message", "") for err in body["errors"])
+
+    def test_validate_reports_type_error(self, explorer_app: Starlette) -> None:
+        client = TestClient(explorer_app)
+        response = client.post(
+            "/explorer/tools/image.resize/validate",
+            json={"width": "not-an-int", "height": 200},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["valid"] is False
+        # Path should point at /width
+        assert any(err.get("path") == "/width" for err in body["errors"])
+
+    def test_validate_404_for_unknown_tool(self, explorer_app: Starlette) -> None:
+        client = TestClient(explorer_app)
+        response = client.post(
+            "/explorer/tools/nonexistent.tool/validate",
+            json={},
+        )
+        assert response.status_code == 404
+
+    def test_validate_works_when_execute_disabled(
+        self, explorer_app_no_execute: Starlette, mock_router: AsyncMock
+    ) -> None:
+        """Validate is read-only — must work even when allow_execute=False."""
+        client = TestClient(explorer_app_no_execute)
+        response = client.post(
+            "/explorer/tools/image.resize/validate",
+            json={"width": 100, "height": 200},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"valid": True}
+        # And it must NOT have invoked the router (no execution).
+        mock_router.handle_call.assert_not_called()
+
+    def test_validate_does_not_require_auth(self, sample_tools: list[MockTool], mock_router: AsyncMock) -> None:
+        """F7 spec: /validate is not gated by auth_hook."""
+        authenticator = JWTAuthenticator(key=SECRET)
+        mount = create_explorer_mount(
+            sample_tools,
+            mock_router,
+            allow_execute=True,
+            explorer_prefix="/explorer",
+            authenticator=authenticator,
+        )
+        app = Starlette(routes=[mount])
+        client = TestClient(app)
+        response = client.post(
+            "/explorer/tools/image.resize/validate",
+            json={"width": 100, "height": 200},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"valid": True}

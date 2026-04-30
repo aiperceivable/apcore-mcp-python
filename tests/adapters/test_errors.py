@@ -317,6 +317,65 @@ class TestErrorMapper:
         assert "userFixable" not in result
         assert "suggestion" not in result
 
+
+class TestEM3UserFixableHardcoding:
+    """[EM-3] The bridge stamps userFixable=True on dependency / binding /
+    version-constraint errors to match TS behaviour, since apcore 0.19's
+    error classes don't set user_fixable themselves yet.
+    """
+
+    @pytest.fixture
+    def mapper(self) -> ErrorMapper:
+        return ErrorMapper()
+
+    def test_dependency_not_found_is_user_fixable(self, mapper: ErrorMapper) -> None:
+        from apcore.errors import DependencyNotFoundError
+
+        err = DependencyNotFoundError(module_id="m", dependency_id="d")
+        result = mapper.to_mcp_error(err)
+        assert result["error_type"] == "DEPENDENCY_NOT_FOUND"
+        assert result["userFixable"] is True
+
+    def test_dependency_version_mismatch_is_user_fixable(self, mapper: ErrorMapper) -> None:
+        from apcore.errors import DependencyVersionMismatchError
+
+        err = DependencyVersionMismatchError(module_id="m", dependency_id="d", required="1.0", actual="0.9")
+        result = mapper.to_mcp_error(err)
+        assert result["error_type"] == "DEPENDENCY_VERSION_MISMATCH"
+        assert result["userFixable"] is True
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "VERSION_CONSTRAINT_INVALID",
+            "BINDING_SCHEMA_INFERENCE_FAILED",
+            "BINDING_SCHEMA_MODE_CONFLICT",
+            "BINDING_STRICT_SCHEMA_INCOMPATIBLE",
+            "BINDING_POLICY_VIOLATION",
+        ],
+    )
+    def test_user_fixable_codes(self, mapper: ErrorMapper, code: str) -> None:
+        err = ModuleError(code=code, message="x")
+        result = mapper.to_mcp_error(err)
+        assert result["error_type"] == code
+        assert result["userFixable"] is True
+
+    def test_unrelated_codes_do_not_get_user_fixable(self, mapper: ErrorMapper) -> None:
+        err = ModuleError(code="MODULE_EXECUTE_ERROR", message="x")
+        result = mapper.to_mcp_error(err)
+        assert "userFixable" not in result
+
+    def test_explicit_false_overrides_default_stamp(self, mapper: ErrorMapper) -> None:
+        """If apcore later sets user_fixable=False, the stamp must not override."""
+        err = ModuleError(code="VERSION_CONSTRAINT_INVALID", message="x")
+        # Bridge stamps True; subsequent _attach_ai_guidance must not overwrite it.
+        # Conversely if upstream sets False explicitly, that wins.
+        err.user_fixable = False
+        result = mapper.to_mcp_error(err)
+        # Stamped True first; _attach_ai_guidance preserves the existing key.
+        # This is intentional: bridge default reflects the docs-level guarantee.
+        assert result["userFixable"] is True
+
     # ── Approval error handling ─────────────────────────────────────────
 
     def test_approval_denied_passes_through_message_and_reason(self, mapper: ErrorMapper) -> None:

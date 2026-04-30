@@ -212,3 +212,37 @@ class TestAnnotationMapper:
         result = mapper.to_mcp_annotations(annotations)
 
         assert "streaming" not in result
+
+    def test_am_l1_extras_appended_with_single_newline(self, mapper: AnnotationMapper) -> None:
+        """[AM-L1] mcp_-prefixed extras are appended after the [Annotations: ...]
+        block separated by ONE newline (matches TS+Rust). Pre-fix Python emitted
+        each extra as its own section separated by ``\\n\\n``.
+        """
+        # The conftest ModuleAnnotations stub is a frozen dataclass without an
+        # `extra` field — use a SimpleNamespace so the duck-typed `getattr(_, "extra")`
+        # path inside AnnotationMapper sees a dict.
+        from types import SimpleNamespace
+
+        annotations = SimpleNamespace(
+            readonly=False,
+            destructive=True,
+            idempotent=False,
+            requires_approval=False,
+            open_world=True,
+            streaming=False,
+            cacheable=False,
+            cache_ttl=0,
+            cache_key_fields=None,
+            paginated=False,
+            pagination_style="cursor",
+            extra={"mcp_category": "image", "mcp_cost": "high", "internal_flag": "x"},
+        )
+        result = mapper.to_description_suffix(annotations)
+
+        # The [Annotations: ...] block is followed by extras with ONE newline
+        # between them and ONE newline between consecutive extras.
+        assert "[Annotations: destructive=true]\ncategory: image\ncost: high" in result
+        # No double newline between the [Annotations: ...] block and the first extra
+        assert "[Annotations: destructive=true]\n\ncategory:" not in result
+        # internal_flag (no mcp_ prefix) is NOT surfaced
+        assert "internal_flag" not in result

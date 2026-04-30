@@ -279,10 +279,11 @@ mcp = APCoreMCP(
     async_tasks=True,            # enable F-043 Async Task Bridge
     async_max_concurrent=10,     # max concurrent async tasks
     async_max_tasks=1000,        # max queued async tasks
-    schema_converter=None,       # override default SchemaConverter (EB-2)
-    annotation_mapper=None,      # override default AnnotationMapper (EB-2)
-    error_mapper=None,           # override default ErrorMapper (EB-2)
 )
+
+# Note: redact_output, schema_converter, annotation_mapper, and error_mapper
+# are NOT APCoreMCP() constructor kwargs — pass them to mcp.serve() /
+# mcp.async_serve() instead (see the `serve()` reference below).
 
 # Launch as MCP server (blocking)
 mcp.serve(transport="streamable-http", port=8000, explorer=True)
@@ -654,7 +655,7 @@ apcore-mcp (separate process / library call)
 git clone https://github.com/aiperceivable/apcore-mcp-python.git
 cd apcore-mcp
 pip install -e ".[dev]"
-pytest                           # 556 tests
+pytest                           # ~689 tests
 pytest --cov                     # with coverage report
 ```
 

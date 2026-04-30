@@ -115,3 +115,43 @@ class TestModuleIDNormalizer:
             assert pattern.match(
                 normalized
             ), f"Normalized result '{normalized}' from '{module_id}' does not match pattern ^[a-zA-Z0-9_-]*$"
+
+
+class TestMID5TryDenormalize:
+    """[MID-5] try_denormalize is a bijection-guarded inverse of normalize.
+
+    Plain ``denormalize`` is lenient and round-trips only on the image of
+    ``normalize``. ``try_denormalize`` returns ``None`` for inputs that are
+    not valid pre-images, useful for sanitizing untrusted client input.
+    """
+
+    @pytest.fixture
+    def normalizer(self) -> ModuleIDNormalizer:
+        return ModuleIDNormalizer()
+
+    def test_round_trip_succeeds(self, normalizer: ModuleIDNormalizer) -> None:
+        normalized = normalizer.normalize("image.resize")
+        assert normalizer.try_denormalize(normalized) == "image.resize"
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        [
+            "Image-Resize",  # uppercase letters
+            "--bad",  # leading double-dash -> leading double-dot
+            "foo--bar",  # double dash -> double dot (invalid)
+            "-foo",  # leading dash -> leading dot (invalid)
+            "foo-",  # trailing dash -> trailing dot (invalid)
+            "1foo",  # leading digit (invalid)
+            "",  # empty (invalid)
+        ],
+    )
+    def test_rejects_invalid_inputs(self, normalizer: ModuleIDNormalizer, tool_name: str) -> None:
+        assert normalizer.try_denormalize(tool_name) is None
+
+    def test_accepts_no_dashes(self, normalizer: ModuleIDNormalizer) -> None:
+        assert normalizer.try_denormalize("ping") == "ping"
+
+    def test_lenient_denormalize_unchanged(self, normalizer: ModuleIDNormalizer) -> None:
+        """Plain denormalize stays lenient — no behavior change for invalid inputs."""
+        assert normalizer.denormalize("Image-Resize") == "Image.Resize"
+        assert normalizer.denormalize("foo--bar") == "foo..bar"

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.0] - 2026-04-23
+## [0.14.0] - 2026-04-28
 
 ### Changed
 
@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Async task bridge is in-memory only; tasks do not survive server restart (matches apcore semantics).
 - Meta-tool names use the reserved `__apcore_` prefix; user-registered modules with this prefix are now rejected at `build_tool` time to prevent shadowing.
 - Usage endpoints are only mounted when Explorer is enabled; headless stdio deployments continue to have no HTTP surface.
+
+### Cross-language sync (deferred-modules round, 2026-04-28)
+
+- **Dependency bump**: `mcp-embedded-ui >= 0.4.0` (was `>= 0.3.1`). The new release ships `POST /tools/{name}/validate` (F7) — read-only schema validation, ungated by `allow_execute` or `auth_hook`. The route flows automatically through `create_explorer_mount`. **Resolves EUI-1.**
+- **JWT-1 — `Authenticator.authenticate` is now `async`.** Existing sync implementations continue to work via the new `apcore_mcp.auth.protocol.call_authenticator(auth, headers)` helper, which inspects the return value and awaits if it's a coroutine. Aligns with TS+Rust on the unified `(headers: HeaderMap) -> Awaitable<Identity | None>` contract. Tests for `JWTAuthenticator` are now `async def`.
+- **TM-4 — transport-disconnect cancellation forwarding.** `TransportManager.set_async_task_bridge(bridge)` matches TS `setAsyncTaskBridge` and Rust `set_cancel_handler`. The transport scopes a per-connection session id via the new `transport_session_var` `ContextVar`; `factory.handle_call_tool` forwards it as `session_key` to `bridge.submit(...)`, and on transport teardown the manager calls `bridge.cancel_session_tasks(session_id)`. Wired automatically by `serve()`, `async_serve()`, and `APCoreMCP.serve` / `async_serve` when an async bridge is present. 6 regression tests.
+- **EB-2 — adapter-hook kwargs.** `serve()` and `async_serve()` accept `schema_converter`, `annotation_mapper`, `error_mapper` kwargs that override the factory's built-in adapters.
+- **EM-1 — `McpErrorFormatter` canonical class name.** Added as the preferred PascalCase name (matches TS+Rust). The pre-existing `MCPErrorFormatter` (all-caps) is kept as a backwards-compatible alias. Both are exported from `apcore_mcp` and `apcore_mcp.adapters`.
+- **EM-3 — `userFixable=true` stamp.** `ErrorMapper` now hardcodes `userFixable: true` for `DEPENDENCY_NOT_FOUND`, `DEPENDENCY_VERSION_MISMATCH`, `VERSION_CONSTRAINT_INVALID`, and the four `BINDING_*` codes (matches TS). apcore 0.19's error classes don't yet set `user_fixable=true` themselves, so the bridge stamps the hint to give MCP clients a consistent self-healing signal. 9 regression tests.
+- **MID-5 — `ModuleIDNormalizer.try_denormalize`.** New bijection-guarded variant validates the dash→dot-replaced result against `MODULE_ID_PATTERN`, returning `None` for inputs that aren't valid pre-images of `normalize`. Plain `denormalize` stays lenient. 8 regression tests.
+- **JWT-2 — case-insensitive `Authorization` header lookup.** `JWTAuthenticator.authenticate` now tries both `headers["authorization"]` and `headers["Authorization"]`. ASGI lower-cases header names but direct callers may pass the capitalised form; RFC 7230 §3.2 mandates case-insensitive header names. Matches TS+Rust behaviour. 1 regression test.
+- **AM-L1 — F-041 annotation extras format aligned with TS+Rust.** `mcp_*` extras are now appended after the `[Annotations: ...]` block separated by a single newline (was each extra as its own `\n\n`-separated section). 1 regression test.
+- TC-011 integration tests added in `tests/explorer/test_explorer.py::TestTC011Validate` pinning the `/validate` wire-up.
 
 ---
 

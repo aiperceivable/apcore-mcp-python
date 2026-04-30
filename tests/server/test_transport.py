@@ -191,3 +191,88 @@ class TestTransportValidationIntegration:
             await tm.run_sse(server, init_options, host="127.0.0.1", port=70000)
 
         server.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TM-4: AsyncTaskBridge cancellation forwarding on disconnect
+# ---------------------------------------------------------------------------
+
+
+class TestTM4CancellationForwarding:
+    """The transport must call ``bridge.cancel_session_tasks(session_id)``
+    when the transport closes — mirrors TS ``setAsyncTaskBridge`` and Rust
+    ``set_cancel_handler``. Tasks submitted while the contextvar is set get
+    keyed under that session and cancelled together on disconnect.
+    """
+
+    def test_set_async_task_bridge_stores_bridge(self) -> None:
+        """set_async_task_bridge accepts any object with cancel_session_tasks."""
+        tm = TransportManager()
+        bridge = MagicMock()
+        bridge.cancel_session_tasks = AsyncMock(return_value=0)
+        tm.set_async_task_bridge(bridge)
+        assert tm._async_task_bridge is bridge
+
+    @pytest.mark.asyncio
+    async def test_scoped_session_sets_and_resets_contextvar(self) -> None:
+        """The contextvar holds the active session id only inside the block."""
+        from apcore_mcp.server.transport import transport_session_var
+
+        tm = TransportManager()
+        assert transport_session_var.get() is None
+
+        async with tm._scoped_session("sess-abc"):
+            assert transport_session_var.get() == "sess-abc"
+
+        assert transport_session_var.get() is None
+
+    @pytest.mark.asyncio
+    async def test_scoped_session_calls_cancel_on_exit(self) -> None:
+        """Bridge.cancel_session_tasks must be invoked once on context exit."""
+        tm = TransportManager()
+        bridge = MagicMock()
+        bridge.cancel_session_tasks = AsyncMock(return_value=2)
+        tm.set_async_task_bridge(bridge)
+
+        async with tm._scoped_session("sess-xyz"):
+            pass
+
+        bridge.cancel_session_tasks.assert_awaited_once_with("sess-xyz")
+
+    @pytest.mark.asyncio
+    async def test_scoped_session_swallows_bridge_errors(self) -> None:
+        """Disconnect path must not raise even if cancel_session_tasks fails."""
+        tm = TransportManager()
+        bridge = MagicMock()
+        bridge.cancel_session_tasks = AsyncMock(side_effect=RuntimeError("boom"))
+        tm.set_async_task_bridge(bridge)
+
+        # Must not raise
+        async with tm._scoped_session("sess-err"):
+            pass
+
+        bridge.cancel_session_tasks.assert_awaited_once_with("sess-err")
+
+    @pytest.mark.asyncio
+    async def test_no_bridge_no_cancel_call(self) -> None:
+        """When no bridge is set, the scoped session is a no-op on exit."""
+        tm = TransportManager()
+        async with tm._scoped_session("sess-none"):
+            pass
+        # No exception, nothing to assert beyond reaching this line.
+
+    @pytest.mark.asyncio
+    async def test_session_key_visible_during_scope(self) -> None:
+        """A nested call (simulating factory.handle_call_tool) must see the id."""
+        from apcore_mcp.server.transport import transport_session_var
+
+        tm = TransportManager()
+        captured: list[str | None] = []
+
+        async def inner() -> None:
+            captured.append(transport_session_var.get())
+
+        async with tm._scoped_session("sess-inner"):
+            await inner()
+
+        assert captured == ["sess-inner"]
