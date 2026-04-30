@@ -13,6 +13,10 @@ from apcore_mcp._utils import resolve_executor, resolve_registry
 from apcore_mcp.auth.protocol import Authenticator
 from apcore_mcp.server.transport import MetricsExporter
 
+# Import module-level launchers so APCoreMCP.serve/async_serve can delegate to them.
+from apcore_mcp import serve
+from apcore_mcp import async_serve
+
 if TYPE_CHECKING:
     from starlette.applications import Starlette
 
@@ -348,6 +352,9 @@ class APCoreMCP:
     ) -> None:
         """Launch the MCP server (blocking).
 
+        Thin wrapper that delegates to the module-level ``serve()`` function,
+        forwarding all instance configuration alongside the call-site options.
+
         Args:
             transport: Transport type - "stdio", "streamable-http", or "sse".
             host: Host address for HTTP-based transports.
@@ -361,63 +368,32 @@ class APCoreMCP:
             explorer_project_name: Project name shown in the explorer footer.
             explorer_project_url: Project URL linked in the explorer footer.
         """
-        from apcore_mcp.server.transport import TransportManager
-
-        if explorer and not explorer_prefix.startswith("/"):
-            raise ValueError("explorer_prefix must start with '/'")
-
-        server, router, tools, init_options, version = self._build_server_components()
-
-        logger.info(
-            "Starting MCP server '%s' v%s with %d tools via %s",
-            self._name,
-            version,
-            len(tools),
-            transport,
+        serve(
+            self._executor,
+            transport=transport,
+            host=host,
+            port=port,
+            name=self._name,
+            version=self._version,
+            on_startup=on_startup,
+            on_shutdown=on_shutdown,
+            tags=self._tags,
+            prefix=self._prefix,
+            validate_inputs=self._validate_inputs,
+            metrics_collector=self._metrics_collector,
+            explorer=explorer,
+            explorer_prefix=explorer_prefix,
+            allow_execute=allow_execute,
+            explorer_title=explorer_title,
+            explorer_project_name=explorer_project_name,
+            explorer_project_url=explorer_project_url,
+            authenticator=self._authenticator,
+            require_auth=self._require_auth,
+            exempt_paths=self._exempt_paths,
+            async_tasks=self._async_tasks,
+            async_max_concurrent=self._async_max_concurrent,
+            async_max_tasks=self._async_max_tasks,
         )
-
-        transport_lower = transport.lower()
-        extra_routes = None
-        if explorer and transport_lower in ("streamable-http", "sse"):
-            extra_routes = self._build_explorer_routes(
-                tools,
-                router,
-                allow_execute=allow_execute,
-                explorer_prefix=explorer_prefix,
-                explorer_title=explorer_title,
-                explorer_project_name=explorer_project_name,
-                explorer_project_url=explorer_project_url,
-            )
-
-        auth_middleware = None
-        if transport_lower in ("streamable-http", "sse"):
-            auth_middleware = self._build_auth_middleware(explorer=explorer, explorer_prefix=explorer_prefix)
-
-        transport_manager = TransportManager(metrics_collector=self._metrics_collector)
-        transport_manager.set_module_count(len(tools))
-
-        async def _run() -> None:
-            if transport_lower == "stdio":
-                await transport_manager.run_stdio(server, init_options)
-            elif transport_lower == "streamable-http":
-                await transport_manager.run_streamable_http(
-                    server, init_options, host=host, port=port, extra_routes=extra_routes, middleware=auth_middleware
-                )
-            elif transport_lower == "sse":
-                await transport_manager.run_sse(
-                    server, init_options, host=host, port=port, extra_routes=extra_routes, middleware=auth_middleware
-                )
-            else:
-                raise ValueError(f"Unknown transport: {transport!r}. Expected 'stdio', 'streamable-http', or 'sse'.")
-
-        if on_startup is not None:
-            on_startup()
-
-        try:
-            asyncio.run(_run())
-        finally:
-            if on_shutdown is not None:
-                on_shutdown()
 
     @contextlib.asynccontextmanager
     async def async_serve(
@@ -431,6 +407,9 @@ class APCoreMCP:
         explorer_project_url: str = "https://github.com/aiperceivable/apcore-mcp-python",
     ) -> AsyncIterator[Starlette]:
         """Build an MCP Starlette ASGI app for embedding into a larger service.
+
+        Thin wrapper that delegates to the module-level ``async_serve()`` function,
+        forwarding all instance configuration alongside the call-site options.
 
         Use this when you want to mount the MCP server alongside other ASGI apps.
 
@@ -455,42 +434,26 @@ class APCoreMCP:
         Yields:
             A configured Starlette ASGI application with MCP endpoints.
         """
-        from apcore_mcp.server.transport import TransportManager
-
-        if explorer and not explorer_prefix.startswith("/"):
-            raise ValueError("explorer_prefix must start with '/'")
-
-        server, router, tools, init_options, version = self._build_server_components()
-
-        logger.info(
-            "Building MCP app '%s' v%s with %d tools",
-            self._name,
-            version,
-            len(tools),
-        )
-
-        extra_routes = None
-        if explorer:
-            extra_routes = self._build_explorer_routes(
-                tools,
-                router,
-                allow_execute=allow_execute,
-                explorer_prefix=explorer_prefix,
-                explorer_title=explorer_title,
-                explorer_project_name=explorer_project_name,
-                explorer_project_url=explorer_project_url,
-            )
-
-        auth_middleware = self._build_auth_middleware(explorer=explorer, explorer_prefix=explorer_prefix)
-
-        transport_manager = TransportManager(metrics_collector=self._metrics_collector)
-        transport_manager.set_module_count(len(tools))
-
-        async with transport_manager.build_streamable_http_app(
-            server,
-            init_options,
-            extra_routes=extra_routes,
-            middleware=auth_middleware,
+        async with async_serve(
+            self._executor,
+            name=self._name,
+            version=self._version,
+            tags=self._tags,
+            prefix=self._prefix,
+            validate_inputs=self._validate_inputs,
+            metrics_collector=self._metrics_collector,
+            explorer=explorer,
+            explorer_prefix=explorer_prefix,
+            allow_execute=allow_execute,
+            explorer_title=explorer_title,
+            explorer_project_name=explorer_project_name,
+            explorer_project_url=explorer_project_url,
+            authenticator=self._authenticator,
+            require_auth=self._require_auth,
+            exempt_paths=self._exempt_paths,
+            async_tasks=self._async_tasks,
+            async_max_concurrent=self._async_max_concurrent,
+            async_max_tasks=self._async_max_tasks,
         ) as app:
             yield app
 

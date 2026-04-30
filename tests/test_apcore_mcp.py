@@ -59,11 +59,16 @@ class StubExecutor:
 
 
 def _make_serve_patches():
-    """Return patches for the lazy imports inside APCoreMCP.serve()."""
+    """Return patches for the module-level serve() function called by APCoreMCP.serve().
+
+    After the D9-001 refactor, APCoreMCP.serve() delegates to the module-level
+    serve() in apcore_mcp/__init__.py which uses names already bound at import
+    time (MCPServerFactory, TransportManager). Patch at those bound locations.
+    """
     return (
-        patch("apcore_mcp.server.factory.MCPServerFactory"),
-        patch("apcore_mcp.server.router.ExecutionRouter"),
-        patch("apcore_mcp.server.transport.TransportManager"),
+        patch("apcore_mcp.MCPServerFactory"),
+        patch("apcore_mcp.ExecutionRouter"),
+        patch("apcore_mcp.TransportManager"),
     )
 
 
