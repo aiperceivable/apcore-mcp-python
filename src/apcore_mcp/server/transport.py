@@ -7,6 +7,7 @@ import logging
 import time as _time
 import uuid
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from typing import Any, Protocol, runtime_checkable
 
 import anyio
@@ -23,6 +24,28 @@ from starlette.routing import Mount, Route
 logger = logging.getLogger(__name__)
 
 
+# [TM-4] Module-level ContextVar carrying the active transport session id.
+# The transport sets it inside :meth:`TransportManager._scoped_session` so
+# that downstream call sites (notably ``factory.handle_call_tool``) can
+# tag async-task submissions with ``session_key=transport_session_var.get()``.
+# When the transport closes, the bridge's ``cancel_session_tasks`` is
+# invoked with that same id to mass-cancel session-bound tasks.
+# Mirrors TS ``transportSessionStorage`` (AsyncLocalStorage) and Rust's
+# ``TransportManager::set_cancel_handler`` keying scheme.
+transport_session_var: ContextVar[str | None] = ContextVar(
+    "apcore_mcp_transport_session", default=None
+)
+
+
+class _AsyncTaskBridgeProtocol(Protocol):
+    """Minimal duck-typed protocol for the bridge object accepted by
+    :meth:`TransportManager.set_async_task_bridge` — kept narrow to avoid
+    importing :class:`AsyncTaskBridge` (which would create a circular
+    dependency between transport and async_task_bridge)."""
+
+    async def cancel_session_tasks(self, session_key: str) -> int: ...
+
+
 @runtime_checkable
 class MetricsExporter(Protocol):
     """Protocol for metrics collectors that can export Prometheus text format."""
@@ -37,10 +60,63 @@ class TransportManager:
         self._start_time = _time.monotonic()
         self._metrics_collector: MetricsExporter | None = metrics_collector
         self._module_count: int = 0
+        # [TM-4] Optional AsyncTaskBridge — wired in by the server bootstrap
+        # so that transport-close events can mass-cancel session-bound tasks.
+        self._async_task_bridge: _AsyncTaskBridgeProtocol | None = None
 
     def set_module_count(self, count: int) -> None:
         """Set the number of registered modules for health reporting."""
         self._module_count = count
+
+    def set_async_task_bridge(self, bridge: _AsyncTaskBridgeProtocol) -> None:
+        """Wire an AsyncTaskBridge in for session-bound cancellation.
+
+        [TM-4] Once set, every transport ``_scoped_session`` block invokes
+        ``bridge.cancel_session_tasks(session_id)`` on exit so any async
+        tasks submitted under that session are cooperatively cancelled
+        when the client disconnects. Mirrors TypeScript's
+        ``setAsyncTaskBridge`` and Rust's ``set_cancel_handler``.
+
+        Per the feature-spec ``Contract`` block, ``None`` is rejected with
+        ``TypeError`` to fail loudly at wire-up rather than silently
+        dropping disconnect cancellation.
+        """
+        if bridge is None:  # type: ignore[unreachable]
+            raise TypeError("set_async_task_bridge() requires a non-None bridge")
+        self._async_task_bridge = bridge
+
+    @contextlib.asynccontextmanager
+    async def _scoped_session(self, session_id: str) -> AsyncIterator[None]:
+        """Context manager bracketing a transport session.
+
+        [TM-4] On enter: publishes ``session_id`` via
+        :data:`transport_session_var` so nested call sites (factory's
+        ``handle_call_tool``) can tag async-task submissions with the
+        owning session.
+
+        On exit: resets the contextvar and, when an
+        :class:`AsyncTaskBridge` has been configured via
+        :meth:`set_async_task_bridge`, calls
+        ``bridge.cancel_session_tasks(session_id)`` to mass-cancel any
+        session-bound tasks. Errors raised by the bridge are logged and
+        swallowed — disconnect cleanup must never bubble out and crash
+        the transport. Mirrors TS+Rust behaviour.
+        """
+        token = transport_session_var.set(session_id)
+        try:
+            yield
+        finally:
+            transport_session_var.reset(token)
+            bridge = self._async_task_bridge
+            if bridge is not None:
+                try:
+                    await bridge.cancel_session_tasks(session_id)
+                except Exception:  # noqa: BLE001 — disconnect must not propagate
+                    logger.warning(
+                        "cancel_session_tasks(%s) failed during transport teardown",
+                        session_id,
+                        exc_info=True,
+                    )
 
     def _build_health_response(self) -> dict[str, object]:
         """Build health check response."""

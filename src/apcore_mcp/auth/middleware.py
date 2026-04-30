@@ -9,7 +9,7 @@ from typing import Any
 
 from apcore import Identity
 
-from apcore_mcp.auth.protocol import Authenticator
+from apcore_mcp.auth.protocol import Authenticator, call_authenticator
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class AuthMiddleware:
             identity = None
             try:
                 headers = extract_headers(scope)
-                identity = self._authenticator.authenticate(headers)
+                identity = await call_authenticator(self._authenticator, headers)
             except Exception:
                 logger.warning(
                     "Authenticator raised on exempt path %s — proceeding with identity=None",
@@ -87,7 +87,7 @@ class AuthMiddleware:
             return
 
         headers = extract_headers(scope)
-        identity = self._authenticator.authenticate(headers)
+        identity = await call_authenticator(self._authenticator, headers)
 
         if identity is None and self._require_auth:
             logger.warning("Authentication failed for %s", path)

@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from apcore_mcp.auth.middleware import auth_identity_var, extract_headers
+from apcore_mcp.auth.protocol import call_authenticator
 
 
 def _build_auth_hook(authenticator: Any):  # noqa: ANN202
@@ -25,12 +26,16 @@ def _build_auth_hook(authenticator: Any):  # noqa: ANN202
     the provided authenticator, and sets ``auth_identity_var`` for the
     duration of the tool call.  If authentication fails the hook raises,
     which causes mcp-embedded-ui to return 401.
+
+    [JWT-1] Returns an *async* context manager so that authenticators with
+    async ``authenticate`` (now the default for :class:`JWTAuthenticator`)
+    can do I/O. ``mcp_embedded_ui`` accepts either sync or async hooks.
     """
 
-    @contextlib.contextmanager
-    def auth_hook(request: Request):  # noqa: ANN202
+    @contextlib.asynccontextmanager
+    async def auth_hook(request: Request):  # noqa: ANN202
         headers = extract_headers(request.scope)
-        identity = authenticator.authenticate(headers)
+        identity = await call_authenticator(authenticator, headers)
         if identity is None:
             raise ValueError("Missing or invalid Bearer token")
         token = auth_identity_var.set(identity)

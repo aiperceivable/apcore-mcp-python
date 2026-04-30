@@ -122,18 +122,27 @@ class AnnotationMapper:
         if parts:
             sections.append(f"[Annotations: {', '.join(parts)}]")
 
-        # F-041: Extract mcp_ prefixed keys from extra
+        # [AM-L1] F-041: extract mcp_-prefixed keys from extra. The wire
+        # format is one extra per line, joined to the preceding section
+        # (typically the [Annotations: ...] block) by a *single* newline —
+        # not the double-newline section separator. Pre-fix Python emitted
+        # each extra as its own section, producing extra blank lines that
+        # diverged from TS+Rust.
+        extra_lines: list[str] = []
         extra = getattr(annotations, "extra", None)
         if extra and isinstance(extra, dict):
             for key in sorted(extra.keys()):
                 if key.startswith("mcp_") and isinstance(extra[key], str):
                     stripped = key[4:]  # Remove "mcp_" prefix
-                    sections.append(f"{stripped}: {extra[key]}")
+                    extra_lines.append(f"{stripped}: {extra[key]}")
 
-        if not sections:
+        if not sections and not extra_lines:
             return ""
 
-        return "\n\n" + "\n\n".join(sections)
+        suffix = "\n\n" + "\n\n".join(sections)
+        if extra_lines:
+            suffix += "\n" + "\n".join(extra_lines)
+        return suffix
 
     def has_requires_approval(self, annotations: Any | None) -> bool:
         """Check if module requires human approval before execution.

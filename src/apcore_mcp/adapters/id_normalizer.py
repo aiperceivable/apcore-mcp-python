@@ -53,6 +53,11 @@ class ModuleIDNormalizer:
 
         Replaces '-' with '.' (inverse of normalize).
 
+        This is the lenient form: it always returns ``tool_name`` with all
+        dashes replaced by dots, regardless of whether the result is a
+        valid module ID. Use :meth:`try_denormalize` when input may be
+        attacker-controlled and you need a bijection guarantee.
+
         Args:
             tool_name: The OpenAI function name (e.g., "image-resize")
 
@@ -69,3 +74,24 @@ class ModuleIDNormalizer:
             'ping'
         """
         return tool_name.replace("-", ".")
+
+    def try_denormalize(self, normalized: str) -> str | None:
+        """Strict inverse of :meth:`normalize` — returns None for non-pre-images.
+
+        [MID-5] Mirrors TypeScript ``tryDenormalize`` and Rust
+        ``denormalize_checked``. Runs the dash→dot replacement, then
+        validates the result against :data:`MODULE_ID_PATTERN`. Useful for
+        sanitizing untrusted client input where ``denormalize`` would
+        silently produce a malformed module ID.
+
+        Args:
+            normalized: The candidate OpenAI function name.
+
+        Returns:
+            The corresponding apcore module ID if it round-trips back to a
+            valid module ID, otherwise ``None``.
+        """
+        candidate = normalized.replace("-", ".")
+        if not MODULE_ID_PATTERN.match(candidate):
+            return None
+        return candidate

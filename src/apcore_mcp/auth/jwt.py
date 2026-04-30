@@ -64,9 +64,21 @@ class JWTAuthenticator:
         self._claim_mapping = claim_mapping or ClaimMapping()
         self._require_claims: list[str] = require_claims if require_claims is not None else ["sub"]
 
-    def authenticate(self, headers: dict[str, str]) -> Identity | None:
-        """Extract Bearer token from headers, decode, and return Identity."""
-        auth_header = headers.get("authorization", "")
+    async def authenticate(self, headers: dict[str, str]) -> Identity | None:
+        """Extract Bearer token from headers, decode, and return Identity.
+
+        [JWT-1] This coroutine matches the cross-language contract — TS and
+        Rust both expose authenticate as ``async``/returning a future so that
+        future authenticator backends (OAuth introspection, JWKS rotation,
+        remote claim lookup) can do I/O without breaking the protocol.
+        Existing sync custom authenticators keep working through the
+        :func:`apcore_mcp.auth.protocol.call_authenticator` bridge.
+        """
+        # [JWT-2] RFC 7230 — header names are case-insensitive. ASGI lower-
+        # cases them, but direct callers (and Starlette's TestClient) may
+        # pass "Authorization" with a capital A. Match TS+Rust behaviour by
+        # accepting both spellings.
+        auth_header = headers.get("authorization") or headers.get("Authorization") or ""
         if not auth_header.lower().startswith("bearer "):
             return None
 

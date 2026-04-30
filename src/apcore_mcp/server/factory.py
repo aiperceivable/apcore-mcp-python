@@ -17,6 +17,7 @@ from apcore_mcp.adapters.annotations import AnnotationMapper
 from apcore_mcp.adapters.schema import SchemaConverter
 from apcore_mcp.auth.middleware import auth_identity_var
 from apcore_mcp.server.async_task_bridge import RESERVED_PREFIX, AsyncTaskBridge
+from apcore_mcp.server.transport import transport_session_var
 
 logger = logging.getLogger(__name__)
 
@@ -301,12 +302,20 @@ class MCPServerFactory:
                         trace_parent = TraceContext.extract({"traceparent": raw_tp})
                 submit_ctx = Context.create(data={}, identity=identity, trace_parent=trace_parent)
                 try:
+                    # [TM-4] Forward the active transport session id so the
+                    # bridge can record this task under that session. The
+                    # transport sets ``transport_session_var`` in
+                    # ``_scoped_session``; on disconnect, the same id is
+                    # passed to ``bridge.cancel_session_tasks`` for mass
+                    # cancellation. ``None`` is fine — the bridge skips
+                    # session indexing when no key is supplied.
                     envelope = await async_bridge.submit(
                         name,
                         arguments or {},
                         submit_ctx,
                         progress_token=extra.get("progress_token"),
                         send_notification=extra.get("send_notification"),
+                        session_key=transport_session_var.get(),
                     )
                     import json as _json
 

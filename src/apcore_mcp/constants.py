@@ -50,3 +50,20 @@ ERROR_CODES: dict[str, str] = {
 }
 
 MODULE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
+
+#: Dot-namespaced event types introduced in apcore 0.15.0 (§9.16).
+#:
+#: These are canonical event names for the apcore event system. Consumers
+#: subscribing via ``registry.on(name)`` should reference these constants
+#: rather than the literal strings; the legacy ``"module_health_changed"``
+#: and ``"config_changed"`` names are partitioned across these four events.
+#:
+#: Cross-language equivalents:
+#:   - TypeScript: ``APCORE_EVENTS`` in ``src/types.ts``
+#:   - Rust:       ``apcore_mcp::apcore_events`` module in ``src/constants.rs``
+APCORE_EVENTS: dict[str, str] = {
+    "MODULE_TOGGLED": "apcore.module.toggled",
+    "MODULE_RELOADED": "apcore.module.reloaded",
+    "CONFIG_UPDATED": "apcore.config.updated",
+    "HEALTH_RECOVERED": "apcore.health.recovered",
+}

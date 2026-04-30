@@ -172,23 +172,40 @@ class TestErrorMapperCamelCaseKeys:
 
 
 # ---------------------------------------------------------------------------
-# ISSUE 4/8 — D9-004: APCORE_EVENTS dead export
+# ISSUE 4/8 — D1-001: APCORE_EVENTS cross-SDK parity (supersedes prior D9-004)
 # ---------------------------------------------------------------------------
+#
+# History: a prior audit pass tagged APCORE_EVENTS as a D9 dead-export and
+# required it removed from Python. A subsequent audit (audit-report-2026-04-30)
+# re-read PRD F-035 §AC.1 + AC.4 ("Canonical event type constants exported
+# (APCORE_EVENTS in TypeScript, equivalent in Python/Rust). Available in
+# Python, TypeScript, and Rust implementations.") and TS+Rust sibling SDKs
+# (which DO export the constant), and reclassified the gap as D1-001:
+# Python is the outlier, must add the export. The PRD AC is authoritative.
+#
+# These tests now assert the inverse of the original D9-004 expectation.
 
 
-class TestApCoreEventsRemoved:
-    """D9-004 — APCORE_EVENTS must be removed from the public API."""
+class TestApCoreEventsExported:
+    """D1-001 — APCORE_EVENTS must be exported per PRD F-035 cross-SDK parity."""
 
-    def test_apcore_events_not_in_module_dir(self) -> None:
+    def test_apcore_events_in_module_dir(self) -> None:
         import apcore_mcp
 
-        assert "APCORE_EVENTS" not in dir(apcore_mcp), (
-            "APCORE_EVENTS is an unused dead export and must be removed from apcore_mcp"
+        assert "APCORE_EVENTS" in dir(apcore_mcp), (
+            "APCORE_EVENTS must be exported from apcore_mcp per PRD F-035 "
+            "cross-SDK parity (TypeScript and Rust both export it)"
         )
 
-    def test_apcore_events_not_importable(self) -> None:
-        with pytest.raises((ImportError, AttributeError)):
-            from apcore_mcp import APCORE_EVENTS  # type: ignore[attr-defined]  # noqa: F401
+    def test_apcore_events_importable(self) -> None:
+        from apcore_mcp import APCORE_EVENTS
+
+        assert APCORE_EVENTS == {
+            "MODULE_TOGGLED": "apcore.module.toggled",
+            "MODULE_RELOADED": "apcore.module.reloaded",
+            "CONFIG_UPDATED": "apcore.config.updated",
+            "HEALTH_RECOVERED": "apcore.health.recovered",
+        }
 
 
 # ---------------------------------------------------------------------------
