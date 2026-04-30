@@ -245,6 +245,41 @@ def serve(
 
                 config_acl = build_acl_from_config(acl_config)
 
+            # Wire MCP_DEFAULTS declared keys as Config Bus fallbacks.
+            # Config Bus values act as a layer between the function signature defaults
+            # and the caller's explicit kwargs. Since Python cannot distinguish "caller
+            # passed the default value" from "caller passed nothing", Config Bus values
+            # unconditionally override the function defaults — callers who need a
+            # specific value must pass it explicitly, which also overrides any Config Bus
+            # setting at the next layer of configuration.
+            cfg_transport = config.get("mcp.transport")
+            if cfg_transport and isinstance(cfg_transport, str):
+                transport = cfg_transport  # noqa: F841 — re-bound intentionally
+            cfg_host = config.get("mcp.host")
+            if cfg_host and isinstance(cfg_host, str):
+                host = cfg_host
+            cfg_port = config.get("mcp.port")
+            if cfg_port and isinstance(cfg_port, int):
+                port = cfg_port
+            cfg_name = config.get("mcp.name")
+            if cfg_name and isinstance(cfg_name, str):
+                name = cfg_name
+            cfg_log_level = config.get("mcp.log_level")
+            if cfg_log_level and isinstance(cfg_log_level, str):
+                log_level = cfg_log_level
+            cfg_validate = config.get("mcp.validate_inputs")
+            if cfg_validate is not None and isinstance(cfg_validate, bool):
+                validate_inputs = cfg_validate
+            cfg_explorer = config.get("mcp.explorer")
+            if cfg_explorer is not None and isinstance(cfg_explorer, bool):
+                explorer = cfg_explorer
+            cfg_explorer_prefix = config.get("mcp.explorer_prefix")
+            if cfg_explorer_prefix and isinstance(cfg_explorer_prefix, str):
+                explorer_prefix = cfg_explorer_prefix
+            cfg_require_auth = config.get("mcp.require_auth")
+            if cfg_require_auth is not None and isinstance(cfg_require_auth, bool):
+                require_auth = cfg_require_auth
+
     # Merge Config Bus middleware (applied first) with caller-supplied middleware.
     combined_middleware: list[object] = list(config_middleware)
     if middleware:
