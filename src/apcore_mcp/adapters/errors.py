@@ -30,6 +30,22 @@ class ErrorMapper:
         ERROR_CODES["ACL_DENIED"],
     }
 
+    def format(self, error: Exception, context: object = None) -> dict[str, Any]:
+        """Format an apcore error into an MCP error response.
+
+        Implements the ErrorFormatter protocol so ``ErrorMapper`` can be used
+        directly with ``ErrorFormatterRegistry.register("mcp", ErrorMapper())``,
+        eliminating the need for the ``MCPErrorFormatter`` passthrough wrapper.
+
+        Args:
+            error: The exception to format.
+            context: Optional context object (ignored; kept for protocol compatibility).
+
+        Returns:
+            MCP error response dict (same as ``to_mcp_error``).
+        """
+        return self.to_mcp_error(error)
+
     def to_mcp_error(self, error: Exception) -> dict[str, Any]:
         """
         Convert any exception to an MCP error response dict.
