@@ -127,7 +127,7 @@ class JWTAuthenticator:
         if identity_id is None:
             return None
 
-        identity_type = payload.get(mapping.type_claim, "user")
+        identity_type = payload.get(mapping.type_claim) or "user"
 
         raw_roles = payload.get(mapping.roles_claim)
         roles = tuple(str(r) for r in raw_roles) if isinstance(raw_roles, list) else ()

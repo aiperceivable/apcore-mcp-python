@@ -47,6 +47,17 @@ class TestAuthenticate:
         assert identity is not None
         assert identity.type == "service"
 
+    async def test_null_type_claim_falls_back_to_user(self):
+        # Regression: dict.get(key, default) returns the default ONLY when
+        # the key is absent — a present-but-null value returns None, which
+        # str()-coerces to the literal "None". TS+Rust both fall back to
+        # "user" on null. See D11-005.
+        auth = JWTAuthenticator(key=SECRET)
+        token = _make_token({"sub": "user-3", "type": None})
+        identity = await auth.authenticate({"authorization": f"Bearer {token}"})
+        assert identity is not None
+        assert identity.type == "user"
+
     async def test_missing_authorization_header(self):
         auth = JWTAuthenticator(key=SECRET)
         assert await auth.authenticate({}) is None
