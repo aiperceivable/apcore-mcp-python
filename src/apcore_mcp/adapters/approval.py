@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from apcore.approval import ApprovalHandler, ApprovalRequest, ApprovalResult
@@ -46,7 +47,7 @@ class ElicitationApprovalHandler(ApprovalHandler):
         message = (
             f"Approval required for tool: {request.module_id}\n\n"
             f"{request.description}\n\n"
-            f"Arguments: {request.arguments}"
+            f"Arguments: {json.dumps(request.arguments)}"
         )
 
         try:
