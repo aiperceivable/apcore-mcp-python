@@ -26,13 +26,13 @@ classifiers = [
 ]
 dependencies = [
     "apcore>=0.19.0",
-    "apcore-toolkit>=0.5.0",
     "mcp>=1.0.0,<2.0",
     "mcp-embedded-ui>=0.4.0",
     "PyJWT>=2.0",
 ]
 
 [project.optional-dependencies]
+markdown = ["apcore-toolkit>=0.5.0"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

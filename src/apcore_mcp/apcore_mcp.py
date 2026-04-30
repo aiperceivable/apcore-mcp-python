@@ -92,7 +92,8 @@ class APCoreMCP:
             approval_handler: Optional approval handler for runtime approval support.
             output_formatter: Optional callable that formats dict results into
                 text for LLM consumption.  Defaults to ``None`` (raw JSON).
-                Use ``apcore_toolkit.to_markdown`` for Markdown output.
+                Use ``apcore_toolkit.to_markdown`` for Markdown output
+                (install with ``pip install apcore-mcp[markdown]``).
             middleware: Optional list of apcore ``Middleware`` instances to
                 install on the Executor via ``executor.use()``. Appended to
                 any middleware declared under Config Bus key

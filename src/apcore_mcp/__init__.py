@@ -165,7 +165,8 @@ def serve(
         output_formatter: Optional callable ``(dict) -> str`` that formats execution
             results into text for LLM consumption. When None (default), results
             are serialised with ``json.dumps``. Use ``apcore_toolkit.to_markdown``
-            for human-readable Markdown output.
+            for human-readable Markdown output (install with
+            ``pip install apcore-mcp[markdown]``).
         strategy: Pipeline execution strategy. Valid values: "standard",
             "internal", "testing", "performance", "minimal". Ignored when
             an Executor is provided directly.
