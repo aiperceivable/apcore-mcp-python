@@ -454,3 +454,61 @@ class TestEM3UserFixableHardcoding:
         assert result["message"] == "Execution was cancelled"
         assert "internal detail" not in result["message"]
         assert "db-3" not in result["message"]
+
+
+class TestPyW2TaskLimitExceededDeadBranch:
+    """[Py-W2] Dead TASK_LIMIT_EXCEEDED branch in _handle_apcore_error must be removed.
+
+    TaskLimitExceededError is handled by the fast-path isinstance check in
+    to_mcp_error() before _handle_apcore_error is ever called, making the
+    code inside _handle_apcore_error that checks for TASK_LIMIT_EXCEEDED dead.
+    """
+
+    @pytest.fixture
+    def mapper(self) -> ErrorMapper:
+        return ErrorMapper()
+
+    def test_task_limit_exceeded_uses_fast_path_not_handle_apcore_error(
+        self, mapper: ErrorMapper
+    ) -> None:
+        """A real TaskLimitExceededError must NOT reach _handle_apcore_error."""
+        from apcore.errors import TaskLimitExceededError
+        from unittest.mock import patch
+
+        err = TaskLimitExceededError("Too many tasks")
+
+        with patch.object(mapper, "_handle_apcore_error", wraps=mapper._handle_apcore_error) as mock_handle:
+            result = mapper.to_mcp_error(err)
+            mock_handle.assert_not_called()
+
+        assert result["isError"] is True
+        assert result["errorType"] == "TASK_LIMIT_EXCEEDED"
+        assert result["retryable"] is True
+
+    def test_task_limit_exceeded_correct_fields(self, mapper: ErrorMapper) -> None:
+        """TaskLimitExceededError result contains isError, errorType, retryable."""
+        from apcore.errors import TaskLimitExceededError
+
+        err = TaskLimitExceededError("Too many concurrent tasks")
+        result = mapper.to_mcp_error(err)
+
+        assert result["isError"] is True
+        assert result["errorType"] == "TASK_LIMIT_EXCEEDED"
+        assert result["retryable"] is True
+        assert "message" in result
+
+    def test_dead_branch_removed_from_handle_apcore_error(self, mapper: ErrorMapper) -> None:
+        """After the fix, _handle_apcore_error must NOT contain a TASK_LIMIT_EXCEEDED branch.
+
+        We verify this by inspecting the source of _handle_apcore_error.
+        If the dead branch is still there, this test fails.
+        """
+        import inspect
+
+        src = inspect.getsource(mapper._handle_apcore_error)
+        # The dead branch has a very specific pattern. After removal it must not appear.
+        # We check for the combined pattern 'TASK_LIMIT_EXCEEDED' inside _handle_apcore_error.
+        assert "TASK_LIMIT_EXCEEDED" not in src, (
+            "_handle_apcore_error still contains a dead TASK_LIMIT_EXCEEDED branch. "
+            "Remove lines 240-249 per Py-W2 fix instructions."
+        )

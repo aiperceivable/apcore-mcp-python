@@ -81,13 +81,15 @@ class ErrorMapper:
         # Prefer isinstance dispatch for apcore 0.19 error classes so cross-language
         # error propagation stays stable even if `.code` drift occurs upstream.
         if isinstance(error, TaskLimitExceededError):
-            return {
+            result = {
                 "isError": True,
                 "errorType": ERROR_CODES["TASK_LIMIT_EXCEEDED"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
                 "retryable": True,
             }
+            self._attach_ai_guidance(error, result)
+            return result
         if isinstance(error, DependencyNotFoundError):
             return {
                 "isError": True,
@@ -245,18 +247,6 @@ class ErrorMapper:
                 "errorType": code,
                 "message": f"Version incompatible: {message}",
                 "details": details,
-            }
-            self._attach_ai_guidance(error, result)
-            return result
-
-        # apcore 0.19.0: TaskLimitExceededError is retryable per changelog.
-        if code == ERROR_CODES.get("TASK_LIMIT_EXCEEDED"):
-            result = {
-                "isError": True,
-                "errorType": code,
-                "message": message,
-                "details": details,
-                "retryable": True,
             }
             self._attach_ai_guidance(error, result)
             return result
