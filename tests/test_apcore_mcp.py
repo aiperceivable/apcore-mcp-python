@@ -407,3 +407,82 @@ class TestAPCoreMCPAsyncServe:
         with pytest.raises(ValueError, match="explorer_prefix must start with"):
             async with mcp.async_serve(explorer=True, explorer_prefix="bad"):
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Py-C2: APCoreMCP.serve()/async_serve() silently drop output_formatter
+# ---------------------------------------------------------------------------
+
+
+class TestPyC2OutputFormatterPropagation:
+    """[Py-C2] output_formatter set at construction time must reach ExecutionRouter."""
+
+    def test_serve_passes_output_formatter_to_router(self) -> None:
+        """APCoreMCP.serve() must pass self._output_formatter to the module-level serve()."""
+        mock_formatter = MagicMock(return_value="formatted")
+        mcp = APCoreMCP(StubRegistry(), output_formatter=mock_formatter)
+
+        captured_formatter: list[Any] = []
+
+        p1, p2, p3 = _make_serve_patches()
+        with p1 as mf, p2 as mock_router_cls, p3 as mt:
+            _, _ = _setup_factory_and_tm(mf, mt)
+
+            # Capture the kwargs passed to ExecutionRouter
+            def capture_router(*args: Any, **kwargs: Any) -> MagicMock:
+                captured_formatter.append(kwargs.get("output_formatter"))
+                router_mock = MagicMock()
+                router_mock.register_tools = MagicMock()
+                return router_mock
+
+            mock_router_cls.side_effect = capture_router
+            mcp.serve(transport="stdio")
+
+        assert len(captured_formatter) == 1, "ExecutionRouter was not instantiated"
+        assert captured_formatter[0] is mock_formatter, (
+            f"output_formatter was not passed to ExecutionRouter: got {captured_formatter[0]!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_serve_passes_output_formatter_to_router(self) -> None:
+        """APCoreMCP.async_serve() must pass self._output_formatter to ExecutionRouter."""
+        mock_formatter = MagicMock(return_value="formatted")
+        mcp = APCoreMCP(StubRegistry(), output_formatter=mock_formatter)
+
+        captured_formatter: list[Any] = []
+
+        import contextlib
+
+        mock_app = MagicMock()
+
+        with patch("apcore_mcp.MCPServerFactory") as mf, patch("apcore_mcp.ExecutionRouter") as mock_router_cls, patch(
+            "apcore_mcp.TransportManager"
+        ) as mt:
+            mock_factory = mf.return_value
+            mock_factory.create_server.return_value = MagicMock()
+            mock_factory.build_tools.return_value = []
+            mock_factory.build_init_options.return_value = MagicMock()
+
+            mock_tm = mt.return_value
+
+            @contextlib.asynccontextmanager
+            async def fake_build_app(*a: Any, **kw: Any) -> Any:
+                yield mock_app
+
+            mock_tm.build_streamable_http_app = fake_build_app
+
+            def capture_router(*args: Any, **kwargs: Any) -> MagicMock:
+                captured_formatter.append(kwargs.get("output_formatter"))
+                router_mock = MagicMock()
+                router_mock.register_tools = MagicMock()
+                return router_mock
+
+            mock_router_cls.side_effect = capture_router
+
+            async with mcp.async_serve():
+                pass
+
+        assert len(captured_formatter) == 1, "ExecutionRouter was not instantiated"
+        assert captured_formatter[0] is mock_formatter, (
+            f"output_formatter was not passed to ExecutionRouter in async_serve: got {captured_formatter[0]!r}"
+        )
