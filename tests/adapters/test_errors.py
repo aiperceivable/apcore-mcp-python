@@ -152,8 +152,8 @@ class TestErrorMapper:
         error = ModuleNotFoundError("image.resize")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "MODULE_NOT_FOUND"
+        assert result["isError"] is True
+        assert result["errorType"] == "MODULE_NOT_FOUND"
         assert "image.resize" in result["message"]
 
     def test_schema_validation_error(self, mapper: ErrorMapper) -> None:
@@ -165,8 +165,8 @@ class TestErrorMapper:
         error = SchemaValidationError("Validation failed", errors=errors)
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "SCHEMA_VALIDATION_ERROR"
+        assert result["isError"] is True
+        assert result["errorType"] == "SCHEMA_VALIDATION_ERROR"
         assert "name" in result["message"]
         assert "age" in result["message"]
 
@@ -175,8 +175,8 @@ class TestErrorMapper:
         error = ACLDeniedError("user1", "admin.delete")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "ACL_DENIED"
+        assert result["isError"] is True
+        assert result["errorType"] == "ACL_DENIED"
         assert "access denied" in result["message"].lower()
         # Should NOT contain sensitive caller_id
         assert "user1" not in result["message"]
@@ -186,8 +186,8 @@ class TestErrorMapper:
         error = ModuleTimeoutError("slow.module", 5000)
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "MODULE_TIMEOUT"
+        assert result["isError"] is True
+        assert result["errorType"] == "MODULE_TIMEOUT"
         assert "timeout" in result["message"].lower() or "timed out" in result["message"].lower()
 
     def test_invalid_input(self, mapper: ErrorMapper) -> None:
@@ -195,8 +195,8 @@ class TestErrorMapper:
         error = InvalidInputError("missing field X")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "GENERAL_INVALID_INPUT"
+        assert result["isError"] is True
+        assert result["errorType"] == "GENERAL_INVALID_INPUT"
         assert "missing field X" in result["message"]
 
     def test_call_depth_exceeded(self, mapper: ErrorMapper) -> None:
@@ -204,8 +204,8 @@ class TestErrorMapper:
         error = CallDepthExceededError(10, 10, ["a", "b"])
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "CALL_DEPTH_EXCEEDED"
+        assert result["isError"] is True
+        assert result["errorType"] == "CALL_DEPTH_EXCEEDED"
         assert "internal" in result["message"].lower()
 
     def test_circular_call(self, mapper: ErrorMapper) -> None:
@@ -213,8 +213,8 @@ class TestErrorMapper:
         error = CircularCallError("a", ["a", "b", "a"])
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "CIRCULAR_CALL"
+        assert result["isError"] is True
+        assert result["errorType"] == "CIRCULAR_CALL"
         assert "internal" in result["message"].lower()
 
     def test_call_frequency_exceeded(self, mapper: ErrorMapper) -> None:
@@ -222,8 +222,8 @@ class TestErrorMapper:
         error = CallFrequencyExceededError("a", 5, 3, ["a"])
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "CALL_FREQUENCY_EXCEEDED"
+        assert result["isError"] is True
+        assert result["errorType"] == "CALL_FREQUENCY_EXCEEDED"
         assert "internal" in result["message"].lower()
 
     def test_unexpected_exception(self, mapper: ErrorMapper) -> None:
@@ -231,8 +231,8 @@ class TestErrorMapper:
         error = ValueError("oops")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "INTERNAL_ERROR"
+        assert result["isError"] is True
+        assert result["errorType"] == "INTERNAL_ERROR"
         assert "internal error" in result["message"].lower()
         # Should NOT leak the original error message
         assert "oops" not in result["message"]
@@ -253,7 +253,7 @@ class TestErrorMapper:
 
         for error in errors:
             result = mapper.to_mcp_error(error)
-            assert result["is_error"] is True, f"{type(error).__name__} should set is_error=True"
+            assert result["isError"] is True, f"{type(error).__name__} should set isError=True"
 
     def test_sanitize_no_stack_trace(self, mapper: ErrorMapper) -> None:
         """Unexpected exceptions don't leak traceback info."""
@@ -333,7 +333,7 @@ class TestEM3UserFixableHardcoding:
 
         err = DependencyNotFoundError(module_id="m", dependency_id="d")
         result = mapper.to_mcp_error(err)
-        assert result["error_type"] == "DEPENDENCY_NOT_FOUND"
+        assert result["errorType"] == "DEPENDENCY_NOT_FOUND"
         assert result["userFixable"] is True
 
     def test_dependency_version_mismatch_is_user_fixable(self, mapper: ErrorMapper) -> None:
@@ -341,7 +341,7 @@ class TestEM3UserFixableHardcoding:
 
         err = DependencyVersionMismatchError(module_id="m", dependency_id="d", required="1.0", actual="0.9")
         result = mapper.to_mcp_error(err)
-        assert result["error_type"] == "DEPENDENCY_VERSION_MISMATCH"
+        assert result["errorType"] == "DEPENDENCY_VERSION_MISMATCH"
         assert result["userFixable"] is True
 
     @pytest.mark.parametrize(
@@ -357,7 +357,7 @@ class TestEM3UserFixableHardcoding:
     def test_user_fixable_codes(self, mapper: ErrorMapper, code: str) -> None:
         err = ModuleError(code=code, message="x")
         result = mapper.to_mcp_error(err)
-        assert result["error_type"] == code
+        assert result["errorType"] == code
         assert result["userFixable"] is True
 
     def test_unrelated_codes_do_not_get_user_fixable(self, mapper: ErrorMapper) -> None:
@@ -387,8 +387,8 @@ class TestEM3UserFixableHardcoding:
         )
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "APPROVAL_DENIED"
+        assert result["isError"] is True
+        assert result["errorType"] == "APPROVAL_DENIED"
         assert result["message"] == "User denied the operation"
         assert result["details"]["reason"] == "Not authorized for production"
 
@@ -400,8 +400,8 @@ class TestEM3UserFixableHardcoding:
         )
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "APPROVAL_TIMEOUT"
+        assert result["isError"] is True
+        assert result["errorType"] == "APPROVAL_TIMEOUT"
         assert result["retryable"] is True
 
     def test_approval_pending_includes_approval_id(self, mapper: ErrorMapper) -> None:
@@ -413,8 +413,8 @@ class TestEM3UserFixableHardcoding:
         )
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "APPROVAL_PENDING"
+        assert result["isError"] is True
+        assert result["errorType"] == "APPROVAL_PENDING"
         assert result["details"]["approvalId"] == "apr-123"
 
     def test_approval_pending_without_approval_id_has_none_details(self, mapper: ErrorMapper) -> None:
@@ -426,8 +426,8 @@ class TestEM3UserFixableHardcoding:
         )
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "APPROVAL_PENDING"
+        assert result["isError"] is True
+        assert result["errorType"] == "APPROVAL_PENDING"
         assert result["details"] is None
 
     # ── ExecutionCancelledError ────────────────────────────────────────
@@ -439,8 +439,8 @@ class TestEM3UserFixableHardcoding:
         error = ExecutionCancelledError("Execution was cancelled")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "EXECUTION_CANCELLED"
+        assert result["isError"] is True
+        assert result["errorType"] == "EXECUTION_CANCELLED"
         assert result["retryable"] is True
         assert result["message"] == "Execution was cancelled"
 

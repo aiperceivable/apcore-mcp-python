@@ -241,7 +241,7 @@ class TestValidateToolErrorMapper:
         router = ExecutionRouter(mock_executor)
 
         with patch.object(router._error_mapper, "to_mcp_error") as mock_map:
-            mock_map.return_value = {"error_type": "ACCESS_DENIED", "message": "Access denied"}
+            mock_map.return_value = {"errorType": "ACCESS_DENIED", "message": "Access denied"}
             result = router.validate_tool("my.tool", {})
 
         # ErrorMapper must be called (sanitization applied)

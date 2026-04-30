@@ -36,16 +36,16 @@ class ErrorMapper:
 
         Returns:
             dict with keys:
-                - is_error: True
-                - error_type: str (error code or "INTERNAL_ERROR")
+                - isError: True
+                - errorType: str (error code or "INTERNAL_ERROR")
                 - message: str (safe error message)
                 - details: dict | None (optional additional context)
         """
         # ExecutionCancelledError is not a ModuleError subclass
         if isinstance(error, ExecutionCancelledError):
             return {
-                "is_error": True,
-                "error_type": ERROR_CODES["EXECUTION_CANCELLED"],
+                "isError": True,
+                "errorType": ERROR_CODES["EXECUTION_CANCELLED"],
                 "message": "Execution was cancelled",
                 "details": None,
                 "retryable": True,
@@ -55,23 +55,23 @@ class ErrorMapper:
         # error propagation stays stable even if `.code` drift occurs upstream.
         if isinstance(error, TaskLimitExceededError):
             return {
-                "is_error": True,
-                "error_type": ERROR_CODES["TASK_LIMIT_EXCEEDED"],
+                "isError": True,
+                "errorType": ERROR_CODES["TASK_LIMIT_EXCEEDED"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
                 "retryable": True,
             }
         if isinstance(error, DependencyNotFoundError):
             return {
-                "is_error": True,
-                "error_type": ERROR_CODES["DEPENDENCY_NOT_FOUND"],
+                "isError": True,
+                "errorType": ERROR_CODES["DEPENDENCY_NOT_FOUND"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
             }
         if isinstance(error, DependencyVersionMismatchError):
             return {
-                "is_error": True,
-                "error_type": ERROR_CODES["DEPENDENCY_VERSION_MISMATCH"],
+                "isError": True,
+                "errorType": ERROR_CODES["DEPENDENCY_VERSION_MISMATCH"],
                 "message": getattr(error, "message", str(error)),
                 "details": getattr(error, "details", None),
             }
@@ -85,8 +85,8 @@ class ErrorMapper:
 
         # Unknown exception - sanitize completely
         return {
-            "is_error": True,
-            "error_type": ERROR_CODES["INTERNAL_ERROR"],
+            "isError": True,
+            "errorType": ERROR_CODES["INTERNAL_ERROR"],
             "message": "Internal error occurred",
             "details": None,
         }
@@ -111,8 +111,8 @@ class ErrorMapper:
         # Convert internal errors to generic message
         if code in self._INTERNAL_ERROR_CODES:
             return {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": "Internal error occurred",
                 "details": None,
             }
@@ -120,8 +120,8 @@ class ErrorMapper:
         # Sanitize ACL errors to not leak caller information
         if code in self._SANITIZED_ERROR_CODES:
             return {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": "Access denied",
                 "details": None,
             }
@@ -130,8 +130,8 @@ class ErrorMapper:
         if code == ERROR_CODES["SCHEMA_VALIDATION_ERROR"] and details is not None:
             formatted_message = self._format_validation_errors(details.get("errors", []))
             result: dict[str, Any] = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": formatted_message if formatted_message else message,
                 "details": details,
             }
@@ -144,8 +144,8 @@ class ErrorMapper:
             # apcore uses snake_case (approval_id); output uses camelCase (approvalId) for MCP convention.
             narrowed = {"approvalId": details["approval_id"]} if details and "approval_id" in details else None
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": message,
                 "details": narrowed,
             }
@@ -154,8 +154,8 @@ class ErrorMapper:
 
         if code == ERROR_CODES["APPROVAL_TIMEOUT"]:
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": message,
                 "details": details,
                 "retryable": True,
@@ -166,8 +166,8 @@ class ErrorMapper:
         if code == ERROR_CODES["APPROVAL_DENIED"]:
             reason = details.get("reason") if details else None
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": message,
                 "details": {"reason": reason} if reason else details,
             }
@@ -178,8 +178,8 @@ class ErrorMapper:
         if code == ERROR_CODES.get("CONFIG_ENV_MAP_CONFLICT"):
             env_var = details.get("env_var", "unknown") if details else "unknown"
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": f"Config env map conflict: {env_var}",
                 "details": details,
             }
@@ -190,8 +190,8 @@ class ErrorMapper:
         if code == ERROR_CODES.get("PIPELINE_ABORT") or type(error).__name__ == "PipelineAbortError":
             step = details.get("step", "unknown") if details else "unknown"
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": f"Pipeline aborted at step: {step}",
                 "details": details,
             }
@@ -201,8 +201,8 @@ class ErrorMapper:
         # Step not found
         if code == ERROR_CODES.get("STEP_NOT_FOUND"):
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": f"Pipeline step not found: {message}",
                 "details": details,
             }
@@ -212,8 +212,8 @@ class ErrorMapper:
         # Version incompatible
         if code == ERROR_CODES.get("VERSION_INCOMPATIBLE"):
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": f"Version incompatible: {message}",
                 "details": details,
             }
@@ -223,8 +223,8 @@ class ErrorMapper:
         # apcore 0.19.0: TaskLimitExceededError is retryable per changelog.
         if code == ERROR_CODES.get("TASK_LIMIT_EXCEEDED"):
             result = {
-                "is_error": True,
-                "error_type": code,
+                "isError": True,
+                "errorType": code,
                 "message": message,
                 "details": details,
                 "retryable": True,
@@ -234,8 +234,8 @@ class ErrorMapper:
 
         # All other apcore errors: pass through message and details
         result = {
-            "is_error": True,
-            "error_type": code,
+            "isError": True,
+            "errorType": code,
             "message": message,
             "details": details,
         }

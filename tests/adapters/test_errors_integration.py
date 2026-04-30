@@ -44,8 +44,8 @@ class TestErrorMapperIntegration:
         error = ModuleNotFoundError("image.resize")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "MODULE_NOT_FOUND"
+        assert result["isError"] is True
+        assert result["errorType"] == "MODULE_NOT_FOUND"
         assert "image.resize" in result["message"]
 
     def test_real_schema_validation_error(self, mapper: ErrorMapper) -> None:
@@ -57,8 +57,8 @@ class TestErrorMapperIntegration:
         error = SchemaValidationError("Validation failed", errors=errors)
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "SCHEMA_VALIDATION_ERROR"
+        assert result["isError"] is True
+        assert result["errorType"] == "SCHEMA_VALIDATION_ERROR"
         assert "name" in result["message"]
         assert "age" in result["message"]
 
@@ -67,8 +67,8 @@ class TestErrorMapperIntegration:
         error = ACLDeniedError("user1", "admin.delete")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "ACL_DENIED"
+        assert result["isError"] is True
+        assert result["errorType"] == "ACL_DENIED"
         assert "access denied" in result["message"].lower()
         # Should NOT contain sensitive caller_id
         assert "user1" not in result["message"]
@@ -78,8 +78,8 @@ class TestErrorMapperIntegration:
         error = ModuleTimeoutError("slow.module", 5000)
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "MODULE_TIMEOUT"
+        assert result["isError"] is True
+        assert result["errorType"] == "MODULE_TIMEOUT"
         assert "timeout" in result["message"].lower() or "timed out" in result["message"].lower()
 
     def test_real_invalid_input(self, mapper: ErrorMapper) -> None:
@@ -87,8 +87,8 @@ class TestErrorMapperIntegration:
         error = InvalidInputError("missing field X")
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "GENERAL_INVALID_INPUT"
+        assert result["isError"] is True
+        assert result["errorType"] == "GENERAL_INVALID_INPUT"
         assert "missing field X" in result["message"]
 
     def test_real_call_depth_exceeded(self, mapper: ErrorMapper) -> None:
@@ -96,8 +96,8 @@ class TestErrorMapperIntegration:
         error = CallDepthExceededError(10, 10, ["a", "b"])
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "CALL_DEPTH_EXCEEDED"
+        assert result["isError"] is True
+        assert result["errorType"] == "CALL_DEPTH_EXCEEDED"
         assert "internal" in result["message"].lower()
 
     def test_real_circular_call(self, mapper: ErrorMapper) -> None:
@@ -105,6 +105,6 @@ class TestErrorMapperIntegration:
         error = CircularCallError("a", ["a", "b", "a"])
         result = mapper.to_mcp_error(error)
 
-        assert result["is_error"] is True
-        assert result["error_type"] == "CIRCULAR_CALL"
+        assert result["isError"] is True
+        assert result["errorType"] == "CIRCULAR_CALL"
         assert "internal" in result["message"].lower()

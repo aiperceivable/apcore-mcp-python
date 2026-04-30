@@ -196,7 +196,7 @@ class ExecutionRouter:
                         "check": "unexpected",
                         "passed": False,
                         "error": {
-                            "error_type": error_info.get("error_type", "UNEXPECTED_ERROR"),
+                            "errorType": error_info.get("errorType", "UNEXPECTED_ERROR"),
                             "message": error_info["message"],
                         },
                         "warnings": [],
