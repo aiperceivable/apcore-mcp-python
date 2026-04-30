@@ -21,7 +21,7 @@ from apcore_mcp.adapters.id_normalizer import ModuleIDNormalizer
 from apcore_mcp.adapters.schema import SchemaConverter
 from apcore_mcp.auth import Authenticator, AuthMiddleware, ClaimMapping, JWTAuthenticator
 from apcore_mcp.config import MCP_DEFAULTS, MCP_ENV_PREFIX, MCP_NAMESPACE, register_mcp_namespace
-from apcore_mcp.constants import APCORE_EVENTS, ERROR_CODES, MODULE_ID_PATTERN, REGISTRY_EVENTS
+from apcore_mcp.constants import ERROR_CODES, MODULE_ID_PATTERN, REGISTRY_EVENTS
 from apcore_mcp.converters.openai import OpenAIConverter
 from apcore_mcp.helpers import MCP_ELICIT_KEY, MCP_PROGRESS_KEY, ElicitResult, elicit, report_progress
 from apcore_mcp.server.factory import MCPServerFactory
@@ -76,7 +76,6 @@ __all__ = [
     "REGISTRY_EVENTS",
     "ERROR_CODES",
     "MODULE_ID_PATTERN",
-    "APCORE_EVENTS",
     # Extension helpers
     "report_progress",
     "elicit",

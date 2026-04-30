@@ -50,10 +50,3 @@ ERROR_CODES: dict[str, str] = {
 }
 
 MODULE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
-
-APCORE_EVENTS: dict[str, str] = {
-    "MODULE_TOGGLED": "apcore.module.toggled",
-    "MODULE_RELOADED": "apcore.module.reloaded",
-    "CONFIG_UPDATED": "apcore.config.updated",
-    "HEALTH_RECOVERED": "apcore.health.recovered",
-}
