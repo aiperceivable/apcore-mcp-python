@@ -586,6 +586,28 @@ async def async_serve(
 
                 config_acl = _build_acl(_acl_cfg)
 
+            # Re-bind transport-config keys from Config Bus — mirrors serve() behaviour.
+            # These keys are silently ignored when coming from environment variables if we
+            # don't re-bind here, because Config Bus returns strings for env-var values.
+            _cfg_name = _cfg.get("mcp.name")
+            if _cfg_name and isinstance(_cfg_name, str):
+                name = _cfg_name
+            _cfg_log_level = _cfg.get("mcp.log_level")
+            if _cfg_log_level and isinstance(_cfg_log_level, str):
+                log_level = _cfg_log_level
+            _cfg_validate = _cfg.get("mcp.validate_inputs")
+            if _cfg_validate is not None and isinstance(_cfg_validate, bool):
+                validate_inputs = _cfg_validate
+            _cfg_explorer = _cfg.get("mcp.explorer")
+            if _cfg_explorer is not None and isinstance(_cfg_explorer, bool):
+                explorer = _cfg_explorer
+            _cfg_explorer_prefix = _cfg.get("mcp.explorer_prefix")
+            if _cfg_explorer_prefix and isinstance(_cfg_explorer_prefix, str):
+                explorer_prefix = _cfg_explorer_prefix
+            _cfg_require_auth = _cfg.get("mcp.require_auth")
+            if _cfg_require_auth is not None and isinstance(_cfg_require_auth, bool):
+                require_auth = _cfg_require_auth
+
     combined_middleware: list[object] = list(config_middleware)
     if middleware:
         combined_middleware.extend(middleware)
