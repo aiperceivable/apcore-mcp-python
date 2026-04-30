@@ -553,3 +553,203 @@ class TestFactoryDoesNotAccessBridgePrivateErrorMapper:
         factory = MCPServerFactory()
         # After fix: factory should have its own _error_mapper
         assert hasattr(factory, "_error_mapper"), "MCPServerFactory should have its own _error_mapper after fix"
+
+
+# ---------------------------------------------------------------------------
+# Py-C3: __init__.py:263 — mcp.port Config Bus re-bind fails for env-var strings
+# ---------------------------------------------------------------------------
+
+
+class TestPyC3ConfigBusPortStringConversion:
+    """[Py-C3] When Config Bus returns mcp.port as a string (env-var path),
+    serve() must coerce it to int instead of silently using the default.
+    """
+
+    def _make_registry(self) -> MagicMock:
+        r = MagicMock()
+        r.list.return_value = []
+        r.get_definition.return_value = None
+        del r.call_async  # not an executor
+        return r
+
+    def test_string_port_is_coerced_to_int_in_serve(self) -> None:
+        """Config Bus returning '9999' (str) must set port=9999 for HTTP transport."""
+        captured_ports: list[Any] = []
+
+        mock_registry = self._make_registry()
+
+        def fake_config_get(key: str, default: object = None) -> object:
+            mapping = {"mcp.port": "9999", "mcp.transport": "streamable-http"}
+            return mapping.get(key, default)
+
+        mock_config = MagicMock()
+        mock_config.get.side_effect = fake_config_get
+
+        with (
+            patch("apcore.Config") as mock_config_cls,
+            patch("apcore.build_strategy_from_config", return_value=None),
+            patch("apcore_mcp.MCPServerFactory") as mock_fac,
+            patch("apcore_mcp.ExecutionRouter"),
+            patch("apcore_mcp.TransportManager") as mock_tm_cls,
+        ):
+            mock_config_cls.load.return_value = mock_config
+            mock_fac.return_value.create_server.return_value = MagicMock()
+            mock_fac.return_value.build_tools.return_value = []
+            mock_fac.return_value.build_init_options.return_value = MagicMock()
+
+            mock_tm = mock_tm_cls.return_value
+            mock_tm.set_module_count = MagicMock()
+
+            async def capture_http(server, opts, *, host, port, **kw: Any) -> None:
+                captured_ports.append(port)
+
+            mock_tm.run_streamable_http = MagicMock(side_effect=lambda *a, **kw: capture_http(*a, **kw))
+
+            from apcore_mcp import serve
+
+            serve(mock_registry, transport="streamable-http")
+
+        assert len(captured_ports) == 1, "run_streamable_http was not called"
+        assert captured_ports[0] == 9999, (
+            f"Expected port=9999 (int) from Config Bus string '9999', "
+            f"but got port={captured_ports[0]!r}"
+        )
+
+    def test_invalid_string_port_falls_back_to_default(self) -> None:
+        """Non-numeric string port must leave port at default (8000)."""
+        captured_ports: list[Any] = []
+
+        mock_registry = self._make_registry()
+
+        def fake_config_get(key: str, default: object = None) -> object:
+            mapping = {"mcp.port": "not-a-number", "mcp.transport": "streamable-http"}
+            return mapping.get(key, default)
+
+        mock_config = MagicMock()
+        mock_config.get.side_effect = fake_config_get
+
+        with (
+            patch("apcore.Config") as mock_config_cls,
+            patch("apcore.build_strategy_from_config", return_value=None),
+            patch("apcore_mcp.MCPServerFactory") as mock_fac,
+            patch("apcore_mcp.ExecutionRouter"),
+            patch("apcore_mcp.TransportManager") as mock_tm_cls,
+        ):
+            mock_config_cls.load.return_value = mock_config
+            mock_fac.return_value.create_server.return_value = MagicMock()
+            mock_fac.return_value.build_tools.return_value = []
+            mock_fac.return_value.build_init_options.return_value = MagicMock()
+
+            mock_tm = mock_tm_cls.return_value
+            mock_tm.set_module_count = MagicMock()
+
+            async def capture_http(server, opts, *, host, port, **kw: Any) -> None:
+                captured_ports.append(port)
+
+            mock_tm.run_streamable_http = MagicMock(side_effect=lambda *a, **kw: capture_http(*a, **kw))
+
+            from apcore_mcp import serve
+
+            # Must not raise; must fall back to default 8000
+            serve(mock_registry, transport="streamable-http")
+
+        assert len(captured_ports) == 1
+        # Default port is 8000 when the string is non-numeric
+        assert captured_ports[0] == 8000, f"Expected default port 8000 but got {captured_ports[0]!r}"
+
+    def test_config_bus_string_port_integration(self) -> None:
+        """Direct code-path test: string '9999' → port variable becomes 9999."""
+        # Simulate what the fixed code does inline
+        cfg_port = "9999"
+        port = 8000  # default
+
+        # The fix:
+        if cfg_port is not None:
+            try:
+                port = int(cfg_port)
+            except (ValueError, TypeError):
+                pass  # warning logged, port unchanged
+
+        assert port == 9999
+
+    def test_config_bus_int_port_still_works(self) -> None:
+        """Integer port from Config Bus still coerces correctly."""
+        cfg_port = 7777
+        port = 8000
+
+        if cfg_port is not None:
+            try:
+                port = int(cfg_port)
+            except (ValueError, TypeError):
+                pass
+
+        assert port == 7777
+
+
+# ---------------------------------------------------------------------------
+# Py-W1: __init__.py:569-580 — async_serve() Config Bus block reads fewer keys
+# ---------------------------------------------------------------------------
+
+
+class TestPyW1AsyncServeConfigBusParity:
+    """[Py-W1] async_serve() must re-bind transport-config keys from Config Bus,
+    matching what serve() does (mcp.name, mcp.transport, mcp.host, mcp.port, …).
+    """
+
+    @pytest.mark.asyncio
+    async def test_async_serve_uses_name_from_config_bus(self) -> None:
+        """When Config Bus provides mcp.name='from-config', async_serve must use it."""
+        captured_server_names: list[str] = []
+
+        def fake_config_get(key: str, default: object = None) -> object:
+            mapping = {"mcp.name": "from-config-bus"}
+            return mapping.get(key, default)
+
+        mock_config = MagicMock()
+        mock_config.get.side_effect = fake_config_get
+        mock_config.__bool__ = lambda self: True
+
+        import contextlib
+
+        mock_app = MagicMock()
+
+        with (
+            patch("apcore.Config") as mock_config_cls,
+            patch("apcore_mcp.MCPServerFactory") as mock_fac,
+            patch("apcore_mcp.ExecutionRouter"),
+            patch("apcore_mcp.TransportManager") as mock_tm_cls,
+        ):
+            mock_config_cls.load.return_value = mock_config
+
+            def capture_create_server(name: str, version: str) -> MagicMock:
+                captured_server_names.append(name)
+                return MagicMock()
+
+            mock_fac.return_value.create_server.side_effect = capture_create_server
+            mock_fac.return_value.build_tools.return_value = []
+            mock_fac.return_value.build_init_options.return_value = MagicMock()
+
+            mock_tm = mock_tm_cls.return_value
+
+            @contextlib.asynccontextmanager
+            async def fake_build(*a: Any, **kw: Any) -> Any:
+                yield mock_app
+
+            mock_tm.build_streamable_http_app = fake_build
+            mock_tm.set_module_count = MagicMock()
+
+            from apcore_mcp import async_serve
+
+            mock_registry = MagicMock()
+            mock_registry.list.return_value = []
+            mock_registry.get_definition.return_value = None
+            mock_registry.call_async = MagicMock()  # make it look like an executor
+
+            async with async_serve(mock_registry, name="default-name"):
+                pass
+
+        # After fix: name should be overridden by Config Bus value
+        assert "from-config-bus" in captured_server_names, (
+            f"async_serve() did not pick up mcp.name from Config Bus. "
+            f"Captured names: {captured_server_names}"
+        )

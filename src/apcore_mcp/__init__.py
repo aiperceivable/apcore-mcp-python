@@ -260,8 +260,15 @@ def serve(
             if cfg_host and isinstance(cfg_host, str):
                 host = cfg_host
             cfg_port = config.get("mcp.port")
-            if cfg_port and isinstance(cfg_port, int):
-                port = cfg_port
+            if cfg_port is not None:
+                try:
+                    port = int(cfg_port)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "mcp.port Config Bus value %r is not an integer, using default %d",
+                        cfg_port,
+                        port,
+                    )
             cfg_name = config.get("mcp.name")
             if cfg_name and isinstance(cfg_name, str):
                 name = cfg_name
