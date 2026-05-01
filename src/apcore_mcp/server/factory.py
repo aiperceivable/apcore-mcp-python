@@ -56,7 +56,7 @@ class MCPServerFactory:
         descriptor: Any,
         *,
         registry: Any | None = None,
-        strict: bool = True,
+        strict: bool | None = None,
     ) -> mcp_types.Tool:
         """Build an MCP Tool from a ModuleDescriptor.
 
@@ -77,6 +77,9 @@ class MCPServerFactory:
         # Reject reserved-prefix ids so user modules cannot shadow async meta-tools.
         if getattr(descriptor, "module_id", "").startswith(RESERVED_PREFIX):
             raise ValueError(f"Module id {descriptor.module_id!r} uses reserved prefix {RESERVED_PREFIX!r}")
+
+        if strict is None:
+            strict = self._strict
 
         # [A-D-012] Strict-Schema-Sourcing: prefer the registry's
         # `export_schema(module_id, strict=True)` when available, matching
@@ -166,6 +169,8 @@ class MCPServerFactory:
         registry: Any,
         tags: list[str] | None = None,
         prefix: str | None = None,
+        *,
+        strict: bool | None = None,
     ) -> list[mcp_types.Tool]:
         """Build Tool objects for all modules in a Registry.
 
@@ -192,7 +197,7 @@ class MCPServerFactory:
             try:
                 # [A-D-012] Pass the registry so build_tool can prefer
                 # registry.export_schema(strict=True) over local conversion.
-                tools.append(self.build_tool(descriptor, registry=registry))
+                tools.append(self.build_tool(descriptor, registry=registry, strict=strict))
             except ValueError as e:
                 # Reserved-prefix violations are hard config errors — re-raise so
                 # misconfiguration is visible at startup rather than silently

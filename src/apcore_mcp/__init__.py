@@ -402,9 +402,16 @@ def serve(
     if explorer and transport_lower in ("streamable-http", "sse"):
         from apcore_mcp.explorer import create_explorer_mount
 
+        # The Explorer "Try it" UI seeds the form from JSON Schema defaults.
+        # Strict-mode schemas strip defaults and mark optional fields as
+        # ["string","null"], which surfaces as `null` in the form. Build a
+        # parallel non-strict tool list so humans see the real defaults.
+        explorer_tools = MCPServerFactory(strict=False).build_tools(
+            registry, tags=tags, prefix=prefix, strict=False
+        )
         extra_routes = [
             create_explorer_mount(
-                tools,
+                explorer_tools,
                 router,
                 allow_execute=allow_execute,
                 explorer_prefix=explorer_prefix,
@@ -706,9 +713,14 @@ async def async_serve(
     if explorer:
         from apcore_mcp.explorer import create_explorer_mount
 
+        # See serve() for rationale: the Explorer is a human UI; strict-mode
+        # schemas hide defaults and add nullable types that confuse the form.
+        explorer_tools = MCPServerFactory(strict=False).build_tools(
+            registry, tags=tags, prefix=prefix, strict=False
+        )
         extra_routes = [
             create_explorer_mount(
-                tools,
+                explorer_tools,
                 router,
                 allow_execute=allow_execute,
                 explorer_prefix=explorer_prefix,
