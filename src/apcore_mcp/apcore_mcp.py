@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
+import importlib
 import logging
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
@@ -12,10 +12,6 @@ from typing import TYPE_CHECKING, Any
 from apcore_mcp._utils import resolve_executor, resolve_registry
 from apcore_mcp.auth.protocol import Authenticator
 from apcore_mcp.server.transport import MetricsExporter
-
-# Import module-level launchers so APCoreMCP.serve/async_serve can delegate to them.
-from apcore_mcp import serve
-from apcore_mcp import async_serve
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -369,7 +365,11 @@ class APCoreMCP:
             explorer_project_name: Project name shown in the explorer footer.
             explorer_project_url: Project URL linked in the explorer footer.
         """
-        serve(
+        # Lazy lookup avoids a static import cycle between this module and the
+        # parent package. Resolving via the package keeps test patches that
+        # target ``apcore_mcp.serve`` effective.
+        _pkg = importlib.import_module("apcore_mcp")
+        _pkg.serve(
             self._executor,
             transport=transport,
             host=host,
@@ -436,7 +436,8 @@ class APCoreMCP:
         Yields:
             A configured Starlette ASGI application with MCP endpoints.
         """
-        async with async_serve(
+        _pkg = importlib.import_module("apcore_mcp")
+        async with _pkg.async_serve(
             self._executor,
             name=self._name,
             version=self._version,

@@ -439,9 +439,9 @@ class TestPyC2OutputFormatterPropagation:
             mcp.serve(transport="stdio")
 
         assert len(captured_formatter) == 1, "ExecutionRouter was not instantiated"
-        assert captured_formatter[0] is mock_formatter, (
-            f"output_formatter was not passed to ExecutionRouter: got {captured_formatter[0]!r}"
-        )
+        assert (
+            captured_formatter[0] is mock_formatter
+        ), f"output_formatter was not passed to ExecutionRouter: got {captured_formatter[0]!r}"
 
     @pytest.mark.asyncio
     async def test_async_serve_passes_output_formatter_to_router(self) -> None:
@@ -455,9 +455,11 @@ class TestPyC2OutputFormatterPropagation:
 
         mock_app = MagicMock()
 
-        with patch("apcore_mcp.MCPServerFactory") as mf, patch("apcore_mcp.ExecutionRouter") as mock_router_cls, patch(
-            "apcore_mcp.TransportManager"
-        ) as mt:
+        with (
+            patch("apcore_mcp.MCPServerFactory") as mf,
+            patch("apcore_mcp.ExecutionRouter") as mock_router_cls,
+            patch("apcore_mcp.TransportManager") as mt,
+        ):
             mock_factory = mf.return_value
             mock_factory.create_server.return_value = MagicMock()
             mock_factory.build_tools.return_value = []
@@ -483,6 +485,6 @@ class TestPyC2OutputFormatterPropagation:
                 pass
 
         assert len(captured_formatter) == 1, "ExecutionRouter was not instantiated"
-        assert captured_formatter[0] is mock_formatter, (
-            f"output_formatter was not passed to ExecutionRouter in async_serve: got {captured_formatter[0]!r}"
-        )
+        assert (
+            captured_formatter[0] is mock_formatter
+        ), f"output_formatter was not passed to ExecutionRouter in async_serve: got {captured_formatter[0]!r}"

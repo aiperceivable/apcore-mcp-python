@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Awaitable, Protocol, Union, runtime_checkable
+from collections.abc import Awaitable
+from typing import Protocol, runtime_checkable
 
 from apcore import Identity
 
@@ -26,7 +27,7 @@ class Authenticator(Protocol):
 
     def authenticate(  # noqa: D401 — protocol shape, may be sync or async
         self, headers: dict[str, str]
-    ) -> Union[Identity, None, Awaitable[Identity | None]]:
+    ) -> Identity | None | Awaitable[Identity | None]:
         """Authenticate a request from its headers.
 
         Args:
@@ -40,9 +41,7 @@ class Authenticator(Protocol):
         ...
 
 
-async def call_authenticator(
-    authenticator: Authenticator, headers: dict[str, str]
-) -> Identity | None:
+async def call_authenticator(authenticator: Authenticator, headers: dict[str, str]) -> Identity | None:
     """Invoke ``authenticator.authenticate`` and bridge sync/async returns.
 
     [JWT-1] Since :class:`Authenticator` permits either sync or async

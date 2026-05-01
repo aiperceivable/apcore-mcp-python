@@ -32,9 +32,7 @@ logger = logging.getLogger(__name__)
 # invoked with that same id to mass-cancel session-bound tasks.
 # Mirrors TS ``transportSessionStorage`` (AsyncLocalStorage) and Rust's
 # ``TransportManager::set_cancel_handler`` keying scheme.
-transport_session_var: ContextVar[str | None] = ContextVar(
-    "apcore_mcp_transport_session", default=None
-)
+transport_session_var: ContextVar[str | None] = ContextVar("apcore_mcp_transport_session", default=None)
 
 
 class _AsyncTaskBridgeProtocol(Protocol):

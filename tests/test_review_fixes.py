@@ -6,6 +6,7 @@ before the fix is applied, pass after.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -611,8 +612,7 @@ class TestPyC3ConfigBusPortStringConversion:
 
         assert len(captured_ports) == 1, "run_streamable_http was not called"
         assert captured_ports[0] == 9999, (
-            f"Expected port=9999 (int) from Config Bus string '9999', "
-            f"but got port={captured_ports[0]!r}"
+            f"Expected port=9999 (int) from Config Bus string '9999', " f"but got port={captured_ports[0]!r}"
         )
 
     def test_invalid_string_port_falls_back_to_default(self) -> None:
@@ -663,12 +663,10 @@ class TestPyC3ConfigBusPortStringConversion:
         cfg_port = "9999"
         port = 8000  # default
 
-        # The fix:
+        # The fix: warning logged, port unchanged on failure
         if cfg_port is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 port = int(cfg_port)
-            except (ValueError, TypeError):
-                pass  # warning logged, port unchanged
 
         assert port == 9999
 
@@ -678,10 +676,8 @@ class TestPyC3ConfigBusPortStringConversion:
         port = 8000
 
         if cfg_port is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 port = int(cfg_port)
-            except (ValueError, TypeError):
-                pass
 
         assert port == 7777
 
@@ -750,6 +746,5 @@ class TestPyW1AsyncServeConfigBusParity:
 
         # After fix: name should be overridden by Config Bus value
         assert "from-config-bus" in captured_server_names, (
-            f"async_serve() did not pick up mcp.name from Config Bus. "
-            f"Captured names: {captured_server_names}"
+            f"async_serve() did not pick up mcp.name from Config Bus. " f"Captured names: {captured_server_names}"
         )

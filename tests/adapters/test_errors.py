@@ -468,12 +468,11 @@ class TestPyW2TaskLimitExceededDeadBranch:
     def mapper(self) -> ErrorMapper:
         return ErrorMapper()
 
-    def test_task_limit_exceeded_uses_fast_path_not_handle_apcore_error(
-        self, mapper: ErrorMapper
-    ) -> None:
+    def test_task_limit_exceeded_uses_fast_path_not_handle_apcore_error(self, mapper: ErrorMapper) -> None:
         """A real TaskLimitExceededError must NOT reach _handle_apcore_error."""
-        from apcore.errors import TaskLimitExceededError
         from unittest.mock import patch
+
+        from apcore.errors import TaskLimitExceededError
 
         err = TaskLimitExceededError("Too many tasks")
 

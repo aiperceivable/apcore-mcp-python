@@ -5,9 +5,9 @@ Each test must FAIL before the fix is applied and PASS after.
 
 from __future__ import annotations
 
-import os
+import contextlib
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -50,7 +50,6 @@ class TestServeAndClassMethodDelegateSameCodePath:
 
     def test_apcore_mcp_serve_delegates_to_module_serve(self) -> None:
         """APCoreMCP.serve() must call the module-level serve() internally."""
-        from apcore_mcp import serve as module_serve
         from apcore_mcp.apcore_mcp import APCoreMCP
 
         mock_registry = self._make_registry()
@@ -76,22 +75,16 @@ class TestServeAndClassMethodDelegateSameCodePath:
 
         called_with: list[dict] = []
 
-        original_serve = module_serve
-
         def capturing_serve(*args, **kwargs):
             called_with.append({"args": args, "kwargs": kwargs})
             # Don't actually run asyncio.run
             raise SystemExit(0)
 
-        with patch("apcore_mcp.apcore_mcp.serve", capturing_serve):
-            try:
-                mcp.serve(transport="stdio")
-            except SystemExit:
-                pass
+        with patch("apcore_mcp.serve", capturing_serve), contextlib.suppress(SystemExit):
+            mcp.serve(transport="stdio")
 
         assert len(called_with) == 1, (
-            "APCoreMCP.serve() must delegate to module-level serve(). "
-            f"Called {len(called_with)} times."
+            "APCoreMCP.serve() must delegate to module-level serve(). " f"Called {len(called_with)} times."
         )
 
     async def test_apcore_mcp_async_serve_delegates_to_module_async_serve(self) -> None:
@@ -121,20 +114,17 @@ class TestServeAndClassMethodDelegateSameCodePath:
 
         called_with: list[dict] = []
 
-        import contextlib
-
         @contextlib.asynccontextmanager
         async def capturing_async_serve(*args, **kwargs):
             called_with.append({"args": args, "kwargs": kwargs})
             yield MagicMock()
 
-        with patch("apcore_mcp.apcore_mcp.async_serve", capturing_async_serve):
+        with patch("apcore_mcp.async_serve", capturing_async_serve):
             async with mcp.async_serve():
                 pass
 
         assert len(called_with) == 1, (
-            "APCoreMCP.async_serve() must delegate to module-level async_serve(). "
-            f"Called {len(called_with)} times."
+            "APCoreMCP.async_serve() must delegate to module-level async_serve(). " f"Called {len(called_with)} times."
         )
 
 
@@ -264,7 +254,6 @@ class TestMCPDefaultsWiredIntoServe:
             with patch("apcore.Config") as mock_config_cls:
                 mock_config_cls.load.return_value = mock_config
 
-                import asyncio
                 import apcore_mcp as _am
 
                 # Monkey-patch the resolve_registry/resolve_executor so we control what
@@ -275,23 +264,21 @@ class TestMCPDefaultsWiredIntoServe:
                     _am.resolve_registry = lambda x: mock_registry  # type: ignore[assignment]
                     _am.resolve_executor = lambda *a, **kw: MagicMock()  # type: ignore[assignment]
 
-                    # serve() calls asyncio.run() — we intercept via the captured calls
-                    try:
+                    # serve() calls asyncio.run() — we intercept via the captured calls.
+                    # asyncio.run may error in test context; we only care about call args.
+                    with contextlib.suppress(Exception):
                         apcore_mcp.serve(
                             mock_registry,
                             transport="streamable-http",
                             # NOT passing host= — should come from Config Bus
                         )
-                    except Exception:
-                        pass  # asyncio.run may error in test context; we only care about call args
                 finally:
                     _am.resolve_registry = original_rr
                     _am.resolve_executor = original_re
 
         # The call must have happened with the Config Bus host
         assert len(transport_manager_calls) == 1, (
-            "serve() should have called run_streamable_http once. "
-            f"Calls: {transport_manager_calls}"
+            "serve() should have called run_streamable_http once. " f"Calls: {transport_manager_calls}"
         )
         assert transport_manager_calls[0]["host"] == "1.2.3.4", (
             f"serve() should have used mcp.host='1.2.3.4' from Config Bus, "
@@ -316,16 +303,11 @@ class TestApcoreToolkitOptionalDep:
         # [project.dependencies] section (before the first optional-deps section)
         lines = content.splitlines()
         in_deps = False
-        in_optional = False
         for line in lines:
             stripped = line.strip()
             if stripped == "[project.dependencies]":
                 in_deps = True
-                in_optional = False
-            elif stripped.startswith("[project.optional-dependencies"):
-                in_optional = True
-                in_deps = False
-            elif stripped.startswith("[") and in_deps:
+            elif stripped.startswith("[project.optional-dependencies") or stripped.startswith("[") and in_deps:
                 in_deps = False
 
             if in_deps and "apcore-toolkit" in stripped:
@@ -347,6 +329,7 @@ class TestApcoreToolkitOptionalDep:
             import importlib
 
             import apcore_mcp
+
             importlib.reload(apcore_mcp)
         except ImportError as e:
             if "apcore_toolkit" in str(e):
@@ -434,10 +417,8 @@ class TestApprovalArgumentsJsonSerialization:
         message = captured_messages[0]
 
         # JSON format uses double quotes: {"key": "val"}
-        assert '{"key": "val"' in message or '"key": "val"' in message, (
-            f"Arguments must be JSON-serialized (double quotes). Got: {message!r}"
-        )
+        assert (
+            '{"key": "val"' in message or '"key": "val"' in message
+        ), f"Arguments must be JSON-serialized (double quotes). Got: {message!r}"
         # Must NOT use Python repr format (single quotes)
-        assert "{'key': 'val'" not in message, (
-            f"Arguments must NOT use Python repr format. Got: {message!r}"
-        )
+        assert "{'key': 'val'" not in message, f"Arguments must NOT use Python repr format. Got: {message!r}"
