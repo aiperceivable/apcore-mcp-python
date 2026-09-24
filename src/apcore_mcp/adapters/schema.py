@@ -202,10 +202,20 @@ class SchemaConverter:
                 # walked for their own nested $refs rather than copied
                 # verbatim. See docs/features/schema-converter.md
                 # (#ref-sibling-keys-are-preserved).
-                merged = dict(inlined)
-                for key, value in schema.items():
-                    if key == "$ref":
-                        continue
+                siblings = {key: value for key, value in schema.items() if key != "$ref"}
+                if not siblings:
+                    # Only $ref was present — nothing to merge. Also covers
+                    # a $ref resolving to a non-dict (e.g. a JSON Schema
+                    # boolean schema `true`/`false`), which `dict(inlined)`
+                    # below cannot represent — return it unchanged, matching
+                    # pre-fix behaviour and the Rust/TypeScript siblings.
+                    return inlined
+                # A $ref with siblings resolving to a non-dict target (rare:
+                # a boolean schema) has no dict to merge onto; fall back to
+                # an empty base so the siblings are still preserved rather
+                # than raising or silently dropping them.
+                merged = dict(inlined) if isinstance(inlined, dict) else {}
+                for key, value in siblings.items():
                     merged[key] = self._inline_refs(value, defs, _seen, _depth + 1)
                 return merged
 

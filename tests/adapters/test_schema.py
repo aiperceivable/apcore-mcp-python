@@ -261,6 +261,58 @@ class TestSchemaConverter:
             },
         }
 
+    def test_ref_to_boolean_schema_without_siblings(self, converter):
+        """A $ref resolving to a JSON Schema boolean (a valid $defs entry,
+        e.g. `$defs: {Anything: true}`) must be returned unchanged when the
+        $ref node has no sibling keys — regression guard for the
+        sibling-merge fix (#ref-sibling-keys-are-preserved), which must not
+        assume the resolved target is a dict when there is nothing to merge
+        onto it.
+        """
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.ref_boolean_schema",
+            description="Test $ref to a boolean schema",
+            input_schema={
+                "type": "object",
+                "$defs": {"Anything": True},
+                "properties": {
+                    "extra": {"$ref": "#/$defs/Anything"},
+                },
+            },
+            output_schema={},
+        )
+
+        result = converter.convert_input_schema(descriptor)
+
+        assert result["properties"]["extra"] is True
+
+    def test_ref_to_boolean_schema_with_sibling(self, converter):
+        """A $ref resolving to a boolean schema WITH a sibling key falls back
+        to an empty dict base rather than raising, so the sibling still
+        survives — mirrors the Rust and TypeScript bridges' handling of the
+        same non-dict-target-plus-siblings edge case.
+        """
+        from tests.conftest import ModuleDescriptor
+
+        descriptor = ModuleDescriptor(
+            module_id="test.ref_boolean_schema_sibling",
+            description="Test $ref to a boolean schema with a sibling",
+            input_schema={
+                "type": "object",
+                "$defs": {"Anything": True},
+                "properties": {
+                    "extra": {"$ref": "#/$defs/Anything", "x-sensitive": True},
+                },
+            },
+            output_schema={},
+        )
+
+        result = converter.convert_input_schema(descriptor)
+
+        assert result["properties"]["extra"] == {"x-sensitive": True}
+
     def test_schema_with_unicode(self, converter):
         """Test that descriptions with unicode are preserved."""
         from tests.conftest import ModuleDescriptor
