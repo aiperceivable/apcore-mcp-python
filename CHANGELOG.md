@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] - 2026-09-24
+
+Bugfix release, Python-only — the 0.22.0 `$ref` sibling-key fix itself had a regression that a
+code-review pass caught before release. No contract change; `apcore-mcp-rust` and
+`apcore-mcp-typescript` needed no equivalent fix (see **Fixed**). 1048 tests pass (was 1046).
+
+### Fixed
+
+- **`SchemaConverter._inline_refs` raised `TypeError` when a `$ref` resolved to a non-dict JSON
+  Schema value**, e.g. a boolean schema declared as `"$defs": {"Anything": true}` — a valid JSON
+  Schema construct. 0.22.0's sibling-key merge did `merged = dict(inlined)` unconditionally, and
+  `dict(True)` raises `TypeError: 'bool' object is not iterable`. This is a regression versus both
+  the pre-0.22.0 behaviour (which returned a non-dict `$ref` target unchanged) and the Rust and
+  TypeScript bridges, whose 0.22.0 implementations already guarded this case (Rust:
+  `match inlined { Value::Object(m) => m, other => ... }`; TypeScript:
+  `typeof inlinedTarget === "object" && !Array.isArray(inlinedTarget) ? {...} : {}`). Fixed to
+  return the resolved value unchanged when the `$ref` node has no sibling keys, and to fall back to
+  an empty `dict` base — rather than raising — when siblings are present alongside a non-dict
+  target, matching the other two bridges. New regression tests in `tests/adapters/test_schema.py`:
+  `test_ref_to_boolean_schema_without_siblings`, `test_ref_to_boolean_schema_with_sibling`.
+
 ## [0.22.0] - 2026-09-24
 
 Raises the required floor to `apcore` 0.31.0 and `apcore-toolkit` 0.12.0, and fixes a
