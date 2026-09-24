@@ -190,7 +190,24 @@ class SchemaConverter:
                 _seen = _seen | {ref_path}
                 resolved = self._resolve_ref(ref_path, defs)
                 # Recursively inline refs in the resolved schema
-                return self._inline_refs(resolved, defs, _seen, _depth + 1)
+                inlined = self._inline_refs(resolved, defs, _seen, _depth + 1)
+
+                # [Security] Sibling keys written beside $ref (e.g.
+                # "x-sensitive") MUST survive resolution — they are NOT
+                # discarded just because the $ref branch was taken. Shallow-
+                # merge them over the resolved-and-inlined result, with the
+                # sibling winning on key conflict (it is the caller's more
+                # specific, explicit value; the $defs entry is the default).
+                # Siblings that are themselves subschemas are independently
+                # walked for their own nested $refs rather than copied
+                # verbatim. See docs/features/schema-converter.md
+                # (#ref-sibling-keys-are-preserved).
+                merged = dict(inlined)
+                for key, value in schema.items():
+                    if key == "$ref":
+                        continue
+                    merged[key] = self._inline_refs(value, defs, _seen, _depth + 1)
+                return merged
 
             # Otherwise, recursively process all values
             result = {}

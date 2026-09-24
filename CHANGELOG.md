@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-09-24
+
+Raises the required floor to `apcore` 0.31.0 and `apcore-toolkit` 0.12.0, and fixes a
+credential-disclosure defect found while reviewing what those two releases changed. Released in step
+with `apcore-mcp-rust` 0.22.0 and `apcore-mcp-typescript` 0.22.0. 1046 tests pass (was 1037).
+
+### Security
+
+- **`$ref` sibling keys were discarded during `SchemaConverter` inlining, dropping `x-sensitive`.**
+  `SchemaConverter._inline_refs` (`src/apcore_mcp/adapters/schema.py`), on encountering a node like
+  `{"$ref": "#/$defs/Token", "x-sensitive": true}`, took the `$ref` branch and returned *only* the
+  resolved `$defs` entry — every key written beside `$ref` (`x-sensitive`, `description`,
+  `deprecated`, ...) was silently dropped. This is a credential-disclosure path, not a fidelity
+  nicety: `ExecutionRouter`'s output redaction (`src/apcore_mcp/server/router.py::_maybe_redact`)
+  reads `x-sensitive` off the *resolved* output schema, via `apcore.redact_sensitive`, to decide what
+  to mask. A sensitive field sitting behind a `$ref` reached the redactor with nothing to redact on
+  and came back in plaintext.
+
+  `_inline_refs` now resolves the `$ref` target, recursively inlines refs within it, and
+  shallow-merges the node's own sibling keys **over** the resolved-and-inlined result — sibling
+  winning on key conflict, siblings that are themselves subschemas independently walked for their own
+  nested `$ref`s, and a chained `$ref`-to-`$ref` carrying siblings contributed at each hop with the
+  outermost sibling winning. A `$ref` naming a definition absent from `$defs` still raises `KeyError`
+  unchanged — sibling merging only applies once a reference resolves. See
+  [`docs/features/schema-converter.md#ref-sibling-keys-are-preserved`](https://github.com/aiperceivable/apcore-mcp/blob/main/docs/features/schema-converter.md#ref-sibling-keys-are-preserved)
+  in the spec repo.
+
+  Found by reviewing what apcore 0.31.0 (decision D-98/D-124) and apcore-toolkit 0.12.0 changed: both
+  fixed the identical defect in their own `$ref` resolvers. `SchemaConverter._inline_refs` is a fully
+  independent implementation with no shared code path to either, so it was not fixed by the dependency
+  floor raise below and carried the same latent bug on its own.
+
+### Tests
+
+- `tests/test_schema_converter_conformance.py` (9 cases: 8 `test_cases` + 1 `error_cases`) — loads
+  the new shared fixture `schema_converter.json` via `tests/conformance_fixtures.py`, following the
+  same pattern as `test_output_redaction_conformance.py`. Drives
+  `SchemaConverter.convert_input_schema(descriptor, strict=False)` against a stand-in descriptor;
+  `strict=False` keeps the already-pinned `additionalProperties` injection out of the expected
+  output. Confirmed to fail against the pre-fix `_inline_refs`.
+
+### Changed — dependency floor
+
+- **Required `apcore` floor raised to 0.31.0** (was `>=0.30.0`) and **required `apcore-toolkit`
+  floor raised to 0.12.0** (was `>=0.11.1`, across the `markdown`, `openapi` and `dev` extras).
+  apcore 0.31.0 is two joined audit cycles (`PROTOCOL_SPEC` v1.37.0 → v1.59.0) settling 54
+  cross-language divergences, five of them security defects — none on a surface this package uses.
+  Every `apcore.*`/`apcore_toolkit.*` symbol this package imports (`ACL`/`ACLRule`,
+  `Context`/`Identity` via plain construction rather than `ContextFactory.create_context`,
+  `Registry`, `Module`, `ModuleError`, `redact_sensitive`, the async task manager,
+  `OpenAPIScanner`/`load_spec`, `HTTPProxyRegistryWriter`) was grepped against both changelogs'
+  breaking-change sections; nothing on that surface changed. apcore-toolkit 0.12.0 adds the Device
+  Authorization Flow (RFC 8628, unused here) and `BindingLoader.load`'s `pattern` parameter
+  (`BindingLoader` is not used by this package); its own required-apcore-floor bump to 0.31.0 is
+  inherited transitively. Confirmed after running the full suite: no other code needed to change for
+  the floor raise itself — the fix above is an independent, unrelated defect found while reviewing
+  the two changelogs, not a consequence of the version bump.
+- The monorepo-root `uv.lock` already resolved `apcore` and `apcore-toolkit` to 0.31.0/0.12.0 via
+  their workspace-editable local paths before this change (they carry no version specifier in the
+  lock's `requires-dist` — workspace sources bypass it entirely), so it needed no regeneration. This
+  package has no lock file of its own.
+
 ## [0.21.0] - 2026-09-07
 
 No behaviour change. Released in step with `apcore-mcp-rust` 0.21.0 and
