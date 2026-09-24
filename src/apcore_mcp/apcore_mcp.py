@@ -357,15 +357,25 @@ class APCoreMCP:
         from apcore_mcp.openapi_backend import openapi_backend
 
         backend_keys = {
-            "base_url", "prefix", "include", "exclude", "include_deprecated",
-            "headers", "timeout", "auth_header_factory", "registry",
-            "has_other_backend_source", "project_root", "transform_operation",
-            "transform_module", "derive_module_id",
+            "base_url",
+            "prefix",
+            "include",
+            "exclude",
+            "include_deprecated",
+            "headers",
+            "timeout",
+            "auth_header_factory",
+            "registry",
+            "has_other_backend_source",
+            "project_root",
+            "transform_operation",
+            "transform_module",
+            "derive_module_id",
         }
         backend_options = {}
         for key in list(options):
-            if key.startswith("openapi_") and key[len("openapi_"):] in backend_keys:
-                backend_options[key[len("openapi_"):]] = options.pop(key)
+            if key.startswith("openapi_") and key[len("openapi_") :] in backend_keys:
+                backend_options[key[len("openapi_") :]] = options.pop(key)
             elif key in backend_keys:
                 backend_options[key] = options.pop(key)
         registry = openapi_backend(spec, **backend_options)
@@ -502,9 +512,7 @@ class APCoreMCP:
             if openapi_config:
                 from apcore_mcp.openapi_backend import build_openapi_backend_from_config
 
-                build_openapi_backend_from_config(
-                    openapi_config, registry=backend, has_other_backend_source=True
-                )
+                build_openapi_backend_from_config(openapi_config, registry=backend, has_other_backend_source=True)
         else:
             backend = extensions_dir_or_backend
             if openapi_config:

@@ -103,7 +103,7 @@ def resolve_spec_location(
     """
     if spec is None:
         return None
-    if not isinstance(spec, (str, Path)):
+    if not isinstance(spec, str | Path):
         # An already-parsed document. Nothing to resolve.
         return spec
 
@@ -153,8 +153,7 @@ def _require_toolkit() -> Any:
         import apcore_toolkit
     except ImportError as exc:  # pragma: no cover - exercised by a dedicated test
         raise RuntimeError(
-            "The OpenAPI backend requires apcore-toolkit. Install it with: "
-            "pip install 'apcore-mcp[openapi]'"
+            "The OpenAPI backend requires apcore-toolkit. Install it with: " "pip install 'apcore-mcp[openapi]'"
         ) from exc
     return apcore_toolkit
 
@@ -198,9 +197,7 @@ def openapi_backend(
     if resolved is None:
         raise ValueError("mcp.openapi.spec is required and resolved to nothing.")
 
-    document = (
-        resolved if isinstance(resolved, dict) else toolkit.load_spec(resolved, headers=headers, timeout=timeout)
-    )
+    document = resolved if isinstance(resolved, dict) else toolkit.load_spec(resolved, headers=headers, timeout=timeout)
 
     # --- 2. Scan ------------------------------------------------------------
     skipped: list[tuple[str, str]] = []

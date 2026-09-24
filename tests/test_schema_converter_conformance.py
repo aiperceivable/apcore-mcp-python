@@ -56,6 +56,5 @@ def test_conformance_schema_converter_errors(case: dict):
         converter.convert_input_schema(_descriptor(case["input_schema"]), strict=False)
 
     assert case["expected_error_substring"] in str(exc_info.value), (
-        f"{case['id']}: expected {case['expected_error_substring']!r} in error message, "
-        f"got {exc_info.value!r}"
+        f"{case['id']}: expected {case['expected_error_substring']!r} in error message, " f"got {exc_info.value!r}"
     )

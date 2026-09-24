@@ -49,9 +49,9 @@ def test_conformance_modules(case: dict, caplog):
     descriptors = {mid: registry.get_definition(mid) for mid in registry.list(visibility=["public", "hidden"])}
 
     expected = case["expected_modules"]
-    assert sorted(descriptors) == sorted(m["module_id"] for m in expected), (
-        f"{case['id']}: module set mismatch — got {sorted(descriptors)}"
-    )
+    assert sorted(descriptors) == sorted(
+        m["module_id"] for m in expected
+    ), f"{case['id']}: module set mismatch — got {sorted(descriptors)}"
 
     for want in expected:
         mid = want["module_id"]
@@ -77,9 +77,9 @@ def test_conformance_modules(case: dict, caplog):
             )
 
         if "warnings_contain" in want:
-            assert any(want["warnings_contain"] in str(r.message) for r in caplog.records), (
-                f"{case['id']}/{mid}: expected a log record containing {want['warnings_contain']!r}"
-            )
+            assert any(
+                want["warnings_contain"] in str(r.message) for r in caplog.records
+            ), f"{case['id']}/{mid}: expected a log record containing {want['warnings_contain']!r}"
 
     for skip in case.get("expected_skipped") or []:
         joined = " ".join(r.getMessage() for r in caplog.records)
@@ -138,9 +138,9 @@ def test_conformance_error_case(case: dict, caplog):
 
     if "expected_registry_module_ids_after" in case:
         after = sorted(registry.list(visibility=["public", "hidden"]))
-        assert after == sorted(case["expected_registry_module_ids_after"]), (
-            f"{case['id']}: the preflight must register NOTHING — registry is now {after}"
-        )
+        assert after == sorted(
+            case["expected_registry_module_ids_after"]
+        ), f"{case['id']}: the preflight must register NOTHING — registry is now {after}"
 
 
 def _register_stub(registry, module_id: str) -> None:

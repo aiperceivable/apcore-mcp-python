@@ -123,9 +123,7 @@ def test_option_headers_reach_the_spec_fetch(spec_server: _SpecServer) -> None:
 def test_documented_default_timeout_fetches_a_slow_spec(spec_server: _SpecServer) -> None:
     # The documented default is 30 *seconds*. Read as milliseconds it would be
     # 30 ms, far under this server's 120 ms — the TypeScript defect.
-    registry = build_openapi_backend_from_config(
-        {"spec": spec_server.url, "base_url": "https://api.example.com"}
-    )
+    registry = build_openapi_backend_from_config({"spec": spec_server.url, "base_url": "https://api.example.com"})
     assert "listpets" in _ids(registry)
 
 
@@ -173,9 +171,7 @@ def test_relative_spec_resolves_against_config_project_root(tmp_path: Path) -> N
 
     with patch("apcore.config.Config") as config_cls:
         config_cls.get_instance.return_value = _FakeConfig(str(tmp_path))
-        registry = build_openapi_backend_from_config(
-            {"spec": "./openapi.json", "base_url": "https://api.example.com"}
-        )
+        registry = build_openapi_backend_from_config({"spec": "./openapi.json", "base_url": "https://api.example.com"})
     assert "listpets" in _ids(registry)
 
 
@@ -196,6 +192,4 @@ def test_falls_back_to_cwd_when_config_has_no_project_root() -> None:
     with patch("apcore.config.Config") as config_cls:
         config_cls.get_instance.return_value = _FakeConfig("")
         with pytest.raises(FileNotFoundError):
-            openapi_backend(
-                "./definitely-not-here.json", base_url="https://api.example.com"
-            )
+            openapi_backend("./definitely-not-here.json", base_url="https://api.example.com")
