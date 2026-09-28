@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Adopts apcore-toolkit 0.13.0, whose `OpenAPIScanner` emits module IDs in apcore's Canonical ID
+alphabet itself, and removes the OpenAPI backend's own module-ID projection. Mirrors the spec
+repo's Unreleased entry; `apcore-mcp-typescript` and `apcore-mcp-rust` make the same change.
+
+### Changed — BREAKING
+
+- **OpenAPI backend: module IDs — and therefore MCP tool names and OpenAI function names — are now
+  the IDs apcore-toolkit's scanner emits; `openapi_backend` no longer projects them.** apcore-toolkit
+  0.13.0 normalises every emitted `module_id` into apcore's alphabet: camelCase split into words,
+  `-` and other characters outside `[A-Za-z0-9_.]` replaced with `_`, a legal ID never rewritten,
+  the final ID normalised after `base_path_prefix` and the `derive_module_id` / `transform_module`
+  hooks. The bridge's projection (lowercase, then `-` → `_`, installed as a `transform_module`
+  wrapper) was redundant for the alphabet and disagreed with the toolkit on every camelCase name.
+  `openapi_backend` now forwards the caller's `transform_module` verbatim and registers what `scan`
+  returns (`src/apcore_mcp/openapi_backend.py`).
+  - **Migration:** tool names / module IDs derived from camelCase or hyphenated `operationId`s,
+    path segments, a camelCase `prefix` or hook output change: `listpets` → `list_pets`,
+    `petstore.listpets` → `petstore.list_pets`, `showpetbyid` → `show_pet_by_id`,
+    `pets.petid.get` → `pets.pet_id.get` (`/pets/{petId}`), `petstore.…` → `pet_store.…` for
+    `prefix="PetStore"`, and a hook returning `MyThing` gives `my_thing` (was `mything`). Already-legal
+    IDs (`users.user_id.get`, FastAPI's `read_item_items__item_id__get`, `/pet-store/items` →
+    `pet_store.items.get`) do not change. **ACL rules, bindings and `include` / `exclude` patterns
+    keyed on the old IDs must be updated**, as must clients calling tools by name.
+- **`apcore-toolkit` floor raised to 0.13.0** (was `>=0.12.0`) in the `markdown`, `openapi` and `dev`
+  extras. The OpenAPI backend registers what the scanner emits; below 0.13.0 a camelCase
+  `operationId` would reach the registry verbatim and be refused.
+
+### Changed
+
+- **The skip of an ID apcore's registry would still refuse now runs on the IDs `scan` returned**,
+  after the toolkit's normalisation and deduplication and before the collision preflight and the
+  writer, rather than inside the `transform_module` wrapper, which saw each ID before the toolkit's
+  final normalisation. The skip WARNING is unchanged in substance ("OpenAPI operation skipped: …")
+  and now names the **emitted** ID (`3ds_2`, not `3ds`); it supersedes the module's scan warnings,
+  including the toolkit's own legality warning, rather than logging beside them. The per-segment
+  check is now a full match (`MODULE_ID_SEGMENT.fullmatch`), so a trailing newline can no longer
+  pass it.
+
+### Deprecated
+
+- **`apcore_mcp.openapi_backend.project_module_id`.** No longer needed and no longer called by
+  anything in apcore-mcp. Kept with its behaviour unchanged — it still lowercases without splitting
+  words, so it does **not** reproduce the toolkit's IDs — and now emits a `DeprecationWarning` on
+  call. It will be removed in a later minor release. `MODULE_ID_SEGMENT` is not deprecated.
+
+### Tests
+
+- `tests/test_openapi_backend_conformance.py` drives `openapi_backend.json` contract 2.0 (expected
+  IDs re-pinned to toolkit 0.13.0 output). Its `expected_skipped` assertion is tightened to the
+  fixture's new semantics: one WARNING record names the ID and the segment, **and no ERROR record
+  names the ID** — the toolkit's legality warning alone would satisfy the old joined-log check.
+- New `tests/test_openapi_backend_module_ids.py` (8 tests): IDs registered as emitted; a hook
+  returning `MyThing` registers as `my_thing` rather than being skipped; the caller's
+  `transform_module` still runs and may drop; a hook ID normalisation cannot repair (`Pets.2Fa`) is
+  skipped naming the emitted `pets.2_fa`; an empty hook ID is skipped; a skipped module stays out of
+  the collision preflight; `project_module_id`'s deprecation and unchanged behaviour; nothing in
+  `openapi_backend` calls it.
+- `tests/test_openapi_config_bus_wiring.py` and `tests/test_openapi_option_plumbing.py` re-pinned
+  `listpets` / `petstore.listpets` → `list_pets` / `petstore.list_pets`.
+- Checked by mutation: leaving out the skip fails the shared `unprojectable_segment_skipped_with_warning`
+  case (the module reaches the writer and fails at ERROR); moving the check back inside
+  `transform_module` fails `prefix_applied_to_every_id` (a hook sees `PetStore.list_pets`).
+- 1056 tests pass (was 1048; against apcore-toolkit 0.13.0 the unchanged code failed 16, every one a
+  pinned pre-0.13 ID).
+
 ## [0.22.1] - 2026-09-24
 
 Bugfix release, Python-only — the 0.22.0 `$ref` sibling-key fix itself had a regression that a

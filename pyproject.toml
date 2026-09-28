@@ -39,7 +39,7 @@ dependencies = [
 # a runtime dependency — this is the extra the "install 'apcore-mcp[markdown]'"
 # WARN logs point at.
 markdown = [
-    "apcore-toolkit>=0.12.0",
+    "apcore-toolkit>=0.13.0",
 ]
 
 # The OpenAPI backend. `[http-proxy]` resolves httpx, which both `load_spec`
@@ -49,7 +49,7 @@ markdown = [
 # entry point raises with an actionable install message instead of returning
 # None.
 openapi = [
-    "apcore-toolkit[http-proxy]>=0.12.0",
+    "apcore-toolkit[http-proxy]>=0.13.0",
 ]
 
 dev = [
@@ -59,7 +59,7 @@ dev = [
     "mypy>=1.0",
     "ruff>=0.1",
     "apdev[dev]>=0.2.3",
-    "apcore-toolkit[http-proxy]>=0.12.0",
+    "apcore-toolkit[http-proxy]>=0.13.0",
 ]
 
 [project.scripts]

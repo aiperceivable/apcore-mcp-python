@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -42,34 +43,49 @@ _URL_SCHEMES = ("http://", "https://")
 
 
 def project_module_id(module_id: str) -> str | None:
-    """Map a scanner-derived module ID into apcore's legal alphabet, or None.
+    """Map a module ID into apcore's legal alphabet, or None.
 
-    apcore-toolkit's ``derive_module_id`` sanitizes to ``[A-Za-z0-9_.-]``.
-    apcore's registry accepts only lowercase, digits, underscores and dots —
-    "no hyphens" — so the two alphabets differ and the scanner's output is not
-    directly registrable. Measured against apcore 0.30.0 and apcore-toolkit
-    0.11.1, only two of nine realistic operation shapes register unrepaired,
-    and the canonical Swagger Petstore (``listPets``, ``createPets``,
-    ``showPetById``) is entirely in the rejected set: it scans cleanly, fails
-    registration on every operation as a per-module ``WriteResult``, and yields
-    an **empty registry**.
+    Deprecated: apcore-toolkit >= 0.13.0 emits every ``module_id`` in apcore's
+    Canonical ID alphabet itself — camelCase split into words (``listPets`` ->
+    ``list_pets``), ``-`` and other characters replaced with ``_``, a legal ID
+    never rewritten — so this projection is no longer needed, and nothing in
+    apcore-mcp calls it any more. It is kept, with its behaviour unchanged, for
+    callers that imported it, and will be removed in a later minor release.
+    Note that it does NOT agree with the toolkit: it lowercases without
+    splitting words (``listPets`` -> ``listpets``).
 
-    The projection is lowercase, then ``-`` -> ``_``. Both are mechanical and
-    lossless up to case. It deliberately stops there: a segment that still does
-    not begin with a lowercase letter (``/v1/2fa`` -> ``v1.2fa.post``) can only
-    be repaired by *inventing* a character, which is a naming decision that
-    belongs to the operator's own ``derive_module_id`` / ``transform_module``
-    hook rather than to a silent default.
+    The projection is lowercase, then ``-`` -> ``_``. A segment that still does
+    not begin with a lowercase letter (``v1.2fa.post``) cannot be repaired
+    without inventing a character, so the result is None.
 
     Returns:
         The projected ID, or None when it cannot be made legal.
     """
+    warnings.warn(
+        "apcore_mcp.openapi_backend.project_module_id is deprecated: apcore-toolkit >= 0.13.0 emits "
+        "every module ID in apcore's Canonical ID alphabet, so the projection is no longer needed. "
+        "It will be removed in a later minor release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     candidate = module_id.lower().replace("-", "_")
     if not candidate:
         return None
     if not all(MODULE_ID_SEGMENT.match(segment) for segment in candidate.split(".")):
         return None
     return candidate
+
+
+def _illegal_segment(module_id: str) -> str | None:
+    """Return the first segment of ``module_id`` apcore's registry would refuse, or None.
+
+    A full match per segment (``re.match`` with ``$`` would accept a trailing
+    newline). An empty ID yields the empty segment, which is illegal too.
+    """
+    for segment in module_id.split("."):
+        if not MODULE_ID_SEGMENT.fullmatch(segment):
+            return segment
+    return None
 
 
 def resolve_spec_location(
@@ -200,54 +216,42 @@ def openapi_backend(
     document = resolved if isinstance(resolved, dict) else toolkit.load_spec(resolved, headers=headers, timeout=timeout)
 
     # --- 2. Scan ------------------------------------------------------------
-    skipped: list[tuple[str, str]] = []
-
-    def _project(module: Any) -> Any | None:
-        """Caller hook first, projection last.
-
-        The order matters and is normative: running the projection last makes
-        the invariant *every registered module ID is apcore-legal* hold
-        unconditionally, whatever a caller's own hook returns. It also runs
-        BEFORE the scanner's ``deduplicate_ids`` — which happens after this
-        callback — because lowercasing can CREATE a collision the document did
-        not have (``listPets`` and ``listpets``).
-        """
-        if transform_module is not None:
-            module = transform_module(module)
-            if module is None:
-                return None
-        projected = project_module_id(module.module_id)
-        if projected is None:
-            segments = module.module_id.lower().replace("-", "_").split(".")
-            bad = next(
-                (seg for seg in segments if not MODULE_ID_SEGMENT.match(seg)),
-                module.module_id,
-            )
-            skipped.append((module.module_id, bad))
-            return None
-        if projected == module.module_id:
-            return module
-        from dataclasses import replace as _replace
-
-        return _replace(module, module_id=projected)
-
-    modules = toolkit.OpenAPIScanner().scan(
+    # The caller's hooks are forwarded verbatim. apcore-toolkit >= 0.13.0
+    # normalises every module ID into apcore's Canonical ID alphabet itself —
+    # after base_path_prefix and both ID-affecting hooks, and before its own
+    # deduplicate_ids — so the bridge applies no projection of its own.
+    scanned = toolkit.OpenAPIScanner().scan(
         document,
         include=include,
         exclude=exclude,
         base_path_prefix=prefix,
         include_deprecated=include_deprecated,
         transform_operation=transform_operation,
-        transform_module=_project,
+        transform_module=transform_module,
         derive_module_id=derive_module_id,
     )
 
-    for derived, segment in skipped:
+    # --- 3. Skip what apcore's registry would refuse (FR-OPENAPI-008) -------
+    # Normalisation cannot repair a segment that begins with a digit
+    # (``/v1/2fa`` -> ``v1.2fa.post``) or an empty ID from a hook; the scanner
+    # still emits such a module, with a legality warning. The check runs HERE,
+    # on the ID ``scan`` returned — never inside ``transform_module``, which
+    # sees the ID before the toolkit's final normalisation (a hook returning
+    # ``MyThing`` or a ``PetStore`` prefix is still to be normalised there) —
+    # and before the preflight and the writer, so a skipped module never
+    # becomes a failed WriteResult. Its scan warnings, the toolkit's legality
+    # warning among them, are superseded by the one skip warning below.
+    modules = []
+    for module in scanned:
+        segment = _illegal_segment(module.module_id)
+        if segment is None:
+            modules.append(module)
+            continue
         logger.warning(
-            "OpenAPI operation skipped: derived module ID %r is not a legal apcore module ID — "
-            "the segment %r does not match %s. apcore's registry would refuse it. Supply a "
-            "derive_module_id or transform_module hook to name this operation yourself.",
-            derived,
+            "OpenAPI operation skipped: module ID %r is not a legal apcore module ID — the segment "
+            "%r does not match %s. apcore's registry would refuse it. Supply a derive_module_id or "
+            "transform_module hook to name this operation yourself.",
+            module.module_id,
             segment,
             MODULE_ID_SEGMENT.pattern,
         )
@@ -259,7 +263,7 @@ def openapi_backend(
     if not modules:
         logger.warning("OpenAPI document yielded zero modules; the server will start with no tools from it.")
 
-    # --- 3. Collision preflight (FR-OPENAPI-006) ----------------------------
+    # --- 4. Collision preflight (FR-OPENAPI-006) ----------------------------
     target = registry if registry is not None else Registry()
     existing = set(_registry_ids(target))
     collisions = sorted({m.module_id for m in modules} & existing)
@@ -271,7 +275,7 @@ def openapi_backend(
             "cannot overlap."
         )
 
-    # --- 4. Base URL --------------------------------------------------------
+    # --- 5. Base URL --------------------------------------------------------
     effective_base_url = base_url or _document_server_url(document)
     if not effective_base_url:
         raise ValueError(
@@ -279,7 +283,7 @@ def openapi_backend(
             "servers[0].url, so every proxied call would resolve against an unknown host."
         )
 
-    # --- 5. Write -----------------------------------------------------------
+    # --- 6. Write -----------------------------------------------------------
     writer = toolkit.HTTPProxyRegistryWriter(
         base_url=effective_base_url,
         auth_header_factory=auth_header_factory,

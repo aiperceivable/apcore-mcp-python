@@ -101,7 +101,7 @@ def test_config_headers_reach_the_spec_fetch(spec_server: _SpecServer) -> None:
             "headers": {"X-Api-Key": "s3cret", "X-Tenant": "acme"},
         }
     )
-    assert "listpets" in _ids(registry)
+    assert "list_pets" in _ids(registry)
     assert spec_server.seen_headers.get("x-api-key") == "s3cret"
     assert spec_server.seen_headers.get("x-tenant") == "acme"
 
@@ -124,7 +124,7 @@ def test_documented_default_timeout_fetches_a_slow_spec(spec_server: _SpecServer
     # The documented default is 30 *seconds*. Read as milliseconds it would be
     # 30 ms, far under this server's 120 ms — the TypeScript defect.
     registry = build_openapi_backend_from_config({"spec": spec_server.url, "base_url": "https://api.example.com"})
-    assert "listpets" in _ids(registry)
+    assert "list_pets" in _ids(registry)
 
 
 def test_a_short_timeout_aborts_the_spec_fetch(spec_server: _SpecServer) -> None:
@@ -152,7 +152,7 @@ def test_a_short_timeout_does_not_shrink_the_proxy_timeout() -> None:
     registry = build_openapi_backend_from_config(
         {"spec": _PETSTORE, "base_url": "https://api.example.com", "timeout": 0.01}
     )
-    assert "listpets" in _ids(registry)
+    assert "list_pets" in _ids(registry)
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def test_relative_spec_resolves_against_config_project_root(tmp_path: Path) -> N
     with patch("apcore.config.Config") as config_cls:
         config_cls.get_instance.return_value = _FakeConfig(str(tmp_path))
         registry = build_openapi_backend_from_config({"spec": "./openapi.json", "base_url": "https://api.example.com"})
-    assert "listpets" in _ids(registry)
+    assert "list_pets" in _ids(registry)
 
 
 def test_explicit_project_root_wins_over_config(tmp_path: Path) -> None:
@@ -185,7 +185,7 @@ def test_explicit_project_root_wins_over_config(tmp_path: Path) -> None:
             base_url="https://api.example.com",
             project_root=str(tmp_path),
         )
-    assert "listpets" in _ids(registry)
+    assert "list_pets" in _ids(registry)
 
 
 def test_falls_back_to_cwd_when_config_has_no_project_root() -> None:

@@ -59,7 +59,7 @@ class TestBuildOpenapiBackendFromConfig:
     def test_builds_registry_from_parsed_document(self) -> None:
         registry = build_openapi_backend_from_config({"spec": _PETSTORE})
         assert registry is not None
-        assert "listpets" in registry.list(visibility=["public", "hidden"])
+        assert "list_pets" in registry.list(visibility=["public", "hidden"])
 
     def test_acknowledge_unapproved_writes_reaches_openapi_backend(self, caplog: pytest.LogCaptureFixture) -> None:
         write_doc = {
@@ -83,7 +83,7 @@ class TestApcoreMcpOpenapiConfigBusOnly:
         with patch("apcore.Config") as mock_cfg_cls:
             mock_cfg_cls.load.return_value = fake_cfg
             mcp = APCoreMCP(None, name="test")
-        assert "listpets" in mcp.tools
+        assert "list_pets" in mcp.tools
 
     def test_none_backend_with_no_config_raises(self) -> None:
         fake_cfg = _FakeConfig({})
@@ -108,4 +108,4 @@ class TestApcoreMcpOpenapiConfigBusOnly:
         with patch("apcore.Config") as mock_cfg_cls:
             mock_cfg_cls.load.return_value = fake_cfg
             mcp = APCoreMCP(Registry(), name="test")
-        assert "petstore.listpets" in mcp.tools
+        assert "petstore.list_pets" in mcp.tools

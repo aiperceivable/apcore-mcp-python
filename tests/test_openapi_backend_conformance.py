@@ -81,14 +81,24 @@ def test_conformance_modules(case: dict, caplog):
                 want["warnings_contain"] in str(r.message) for r in caplog.records
             ), f"{case['id']}/{mid}: expected a log record containing {want['warnings_contain']!r}"
 
+    # `notes.expected_skipped` in the fixture: a WARNING naming the emitted ID
+    # and the segment is necessary but, since apcore-toolkit 0.13.0 appends its
+    # own legality warning, no longer sufficient. What proves the skip is that
+    # the module never reached the writer — no ERROR-level record names it.
     for skip in case.get("expected_skipped") or []:
-        joined = " ".join(r.getMessage() for r in caplog.records)
-        assert skip["derived_module_id"] in joined, (
-            f"{case['id']}: no warning named the skipped operation {skip['derived_module_id']!r}. "
-            f"A transform_module returning None drops the module SILENTLY — the warning is the "
-            f"bridge's to emit."
+        module_id = skip["derived_module_id"]
+        assert any(
+            r.levelno == logging.WARNING and module_id in r.getMessage() and skip["reason_substring"] in r.getMessage()
+            for r in caplog.records
+        ), (
+            f"{case['id']}: no WARNING named the skipped module {module_id!r} together with the "
+            f"offending segment {skip['reason_substring']!r}."
         )
-        assert skip["reason_substring"] in joined, f"{case['id']}: skip warning did not name the offending segment"
+        errors = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR and module_id in r.getMessage()]
+        assert not errors, (
+            f"{case['id']}: {module_id!r} reached the writer and failed there ({errors}); the bridge must "
+            f"skip it BEFORE HTTPProxyRegistryWriter.write."
+        )
 
 
 # ---------------------------------------------------------------------------
