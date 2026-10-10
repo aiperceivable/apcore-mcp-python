@@ -202,6 +202,24 @@ class TestErrorMapper:
         assert "name" in result["message"]
         assert "age" in result["message"]
 
+    @pytest.mark.parametrize(
+        ("entry", "location"),
+        [
+            ({"path": "/items/0/a~1b~0c", "keyword": "type", "message": "invalid"}, "/items/0/a~1b~0c"),
+            ({"path": "", "keyword": "required", "message": "invalid"}, "<root>"),
+            ({"path": "/", "keyword": "type", "message": "invalid"}, "/"),
+            ({"path": None, "field": "legacy", "message": "invalid"}, "legacy"),
+            ({"path": 42, "field": "legacy", "message": "invalid"}, "legacy"),
+            ({"path": "/name", "field": "legacy", "keyword": "type", "message": "invalid"}, "/name"),
+        ],
+    )
+    def test_schema_validation_json_pointer(self, mapper: ErrorMapper, entry: dict, location: str) -> None:
+        """Canonical paths take precedence and retain JSON Pointer escaping."""
+        error = SchemaValidationError("Validation failed", errors=[entry])
+        result = mapper.to_mcp_error(error)
+        assert result["message"] == f"Schema validation failed:\n  {location}: invalid"
+        assert result["details"] == {"errors": [entry]}
+
     def test_schema_validation_error_emits_canonical_message_when_details_none(self, mapper: ErrorMapper) -> None:
         """[D10-001] SCHEMA_VALIDATION_ERROR with details=None must emit canonical message.
 

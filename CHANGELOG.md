@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [Unreleased]
+
+## [0.22.3] - 2026-10-09
+
+### Changed
+
+- Align the three SDK package versions at 0.22.3.
+- Raise the apcore dependency floor to 0.32.0 and apcore-toolkit to 0.14.0.
+  Published dependency packages were used for compatibility validation.
+
+### Fixed
+
+- Format canonical schema-validation diagnostics using JSON Pointer `path`
+  before the legacy `field` fallback. An empty pointer is displayed as
+  `<root>`; nested and escaped pointers are preserved verbatim, and the
+  original `details.errors` entries (including `keyword`) remain unchanged.
+- Read streaming capability from the module annotation when building MCP
+  `_meta`, as the TypeScript and Rust bridges do. apcore 0.32.0 moved exported
+  streaming hints from `annotations` to `_meta`; reading the old export
+  location lost `_meta.streaming`.
+
+### Compatibility
+
+- apcore-toolkit 0.14.0 tightens its pure-data BindingLoader (unknown keys,
+  one-sided schema pairs, and strict-mode tags). This bridge does not call
+  that loader; OpenAPI scanning, proxy writers, Markdown and output
+  formatter signatures are unchanged. No toolkit-specific code adaptation
+  is required. Application binding files loaded by apcore still need to
+  satisfy apcore 0.32.0's stricter runtime validation.
+- Executor timeout cancellation, collect-all preflight checks, governance
+  gate binding and logging redaction are handled by apcore. Existing bridge
+  delegation remains compatible; prohibited governance-step configuration
+  must be corrected by the application rather than relaxed by the bridge.
+
+### Validation
+
+- Full suite against apcore 0.32.0 and apcore-toolkit 0.14.0: 1062 passed, 0 failed.
+
+- Review regression coverage includes `/` (an empty property name), empty
+  root pointers, escaped nested paths, canonical-path precedence, and null or
+  non-string paths falling back to legacy fields. Original diagnostic details
+  remain unchanged; existing legacy-field tests continue to pass.
+
+
 ## [0.22.2] - 2026-09-29
 
 Adopts apcore-toolkit 0.13.0, whose `OpenAPIScanner` emits module IDs in apcore's Canonical ID

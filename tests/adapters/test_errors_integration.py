@@ -51,16 +51,17 @@ class TestErrorMapperIntegration:
     def test_real_schema_validation_error(self, mapper: ErrorMapper) -> None:
         """Test with real SchemaValidationError."""
         errors = [
-            {"field": "name", "message": "required"},
-            {"field": "age", "message": "must be positive"},
+            {"path": "", "keyword": "required", "message": "name is required"},
+            {"path": "/age", "keyword": "minimum", "message": "must be positive"},
         ]
         error = SchemaValidationError("Validation failed", errors=errors)
         result = mapper.to_mcp_error(error)
 
         assert result["isError"] is True
         assert result["errorType"] == "SCHEMA_VALIDATION_ERROR"
-        assert "name" in result["message"]
-        assert "age" in result["message"]
+        assert "<root>: name is required" in result["message"]
+        assert "/age: must be positive" in result["message"]
+        assert result["details"] == {"errors": errors}
 
     def test_real_acl_denied(self, mapper: ErrorMapper) -> None:
         """Test with real ACLDeniedError - should sanitize."""

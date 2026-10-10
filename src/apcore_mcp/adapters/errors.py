@@ -340,11 +340,12 @@ class ErrorMapper:
         if not isinstance(errors, list) or not errors:
             return "Schema validation failed"
 
-        # Format each error as "field: message"
+        # Prefer JSON Pointer paths; retain the legacy field fallback.
         error_lines = []
         for err in errors:
             if isinstance(err, dict):
-                field = err.get("field", "unknown")
+                path = err.get("path")
+                field = (path or "<root>") if isinstance(path, str) else err.get("field", "unknown")
                 msg = err.get("message", "invalid")
             else:
                 field, msg = "unknown", str(err)

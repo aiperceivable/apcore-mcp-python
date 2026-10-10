@@ -250,7 +250,9 @@ class MCPServerFactory:
         meta: dict[str, object] | None = None
         if self._annotation_mapper.has_requires_approval(descriptor.annotations):
             meta = {"requiresApproval": True}
-        if hints.get("streaming"):
+        # apcore 0.32.0 exports streaming in _meta; read the source annotation
+        # directly, as the TypeScript and Rust factories do.
+        if getattr(descriptor.annotations, "streaming", False):
             if meta is None:
                 meta = {}
             meta["streaming"] = True
