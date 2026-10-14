@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-14
+
+Prepared locally; publish after apcore 0.32.1 is available and the dependency floor is raised to that release.
+
+### Added
+
+- Advertise synchronous object output schemas and return structured objects derived from the primary already-redacted JSON text for supported modern MCP clients. Preserve additional trace text and legacy wire formats.
+- Validate the exact advertised schema after redaction, using local references and declared schema dialects without fetching external schemas. Invalid or unrepresentable output returns a payload-free tool error.
+
+### Fixed
+
+- Preserve the actual text `_meta` alias, isolate HTTP/SSE protocol selection, snapshot output schemas, and reject non-finite numbers from exponent overflow or nonstandard JSON constants.
+
+- Preserve JSON integers and decimal values only when parsing and serialization retain their exact value; report deep JSON nesting as a controlled validation error.
+- Resolve references using the declared schema dialect and reject mixed or unsupported dialects without external retrieval.
+
+### Compatibility
+
+- Existing public factory and router signatures remain unchanged. Configure handlers before MCP initialization; legacy clients receive no new fields.
+- Reference-based sensitive output requires the core 0.32.1 dependency fix: https://github.com/aiperceivable/apcore-python/issues/35. Publish that core patch and update the dependency floor before publishing this SDK.
+
 ## [0.22.3] - 2026-10-09
 
 ### Changed

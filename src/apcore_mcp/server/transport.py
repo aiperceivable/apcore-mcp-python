@@ -24,6 +24,9 @@ from starlette.routing import Mount, Route
 logger = logging.getLogger(__name__)
 
 
+# Protocol selection belongs to the active transport, never client metadata.
+_protocol_source_var: ContextVar[str | None] = ContextVar("apcore_mcp_protocol_source", default=None)
+
 # [TM-4] Module-level ContextVar carrying the active transport session id.
 # The transport sets it inside :meth:`TransportManager._scoped_session` so
 # that downstream call sites (notably ``factory.handle_call_tool``) can
@@ -123,6 +126,7 @@ class TransportManager:
         write_stream: Any,
         init_options: InitializationOptions,
         session_id: str,
+        streamable_http: bool = False,
     ) -> None:
         """Run ``server.run`` bracketed by :meth:`_scoped_session`.
 
@@ -132,7 +136,11 @@ class TransportManager:
         ``AsyncTaskBridge.cancel_session_tasks`` fires on teardown.
         """
         async with self._scoped_session(session_id):
-            await server.run(read_stream, write_stream, init_options)
+            token = _protocol_source_var.set("http" if streamable_http else "session")
+            try:
+                await server.run(read_stream, write_stream, init_options)
+            finally:
+                _protocol_source_var.reset(token)
 
     def _build_health_response(self) -> dict[str, object]:
         """Build health check response."""
@@ -215,7 +223,7 @@ class TransportManager:
             # is populated for async-task submissions and so the configured
             # AsyncTaskBridge mass-cancels session-bound tasks on teardown.
             async with anyio.create_task_group() as tg:
-                tg.start_soon(self._run_scoped, server, read_stream, write_stream, init_options, session_id)
+                tg.start_soon(self._run_scoped, server, read_stream, write_stream, init_options, session_id, True)
                 yield app
                 tg.cancel_scope.cancel()
 
@@ -278,7 +286,7 @@ class TransportManager:
             # Run both the MCP server and HTTP server concurrently. [TM-4] The
             # MCP protocol session is bracketed by ``_scoped_session``.
             async with anyio.create_task_group() as tg:
-                tg.start_soon(self._run_scoped, server, read_stream, write_stream, init_options, session_id)
+                tg.start_soon(self._run_scoped, server, read_stream, write_stream, init_options, session_id, True)
                 tg.start_soon(uv_server.serve)
 
     async def run_sse(

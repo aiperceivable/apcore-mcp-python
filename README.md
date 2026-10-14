@@ -681,13 +681,29 @@ apcore-mcp (separate process / library call)
             → OpenAIConverter → list[dict]
 ```
 
+## Structured MCP results (0.23.0, pending publication)
+
+The common structured-output validation subset is Draft-07, Draft 2019-09 and
+Draft 2020-12 (default). Mixed-draft embedded schemas and other declared drafts
+are rejected rather than reinterpreted; repeating the same draft is allowed.
+Numeric JSON text is promoted only when parsing and serialization preserve its
+decimal value. Rounded/underflowed values return a payload-free error when an
+output schema is advertised, otherwise the original text remains unchanged.
+Runtime integer ranges differ; use JSON strings for portable arbitrary-size IDs.
+
+This capability is prepared in the 0.23.0 development source. Publication awaits the corrected apcore dependency; published 0.22.3 does not include it.
+
+For clients negotiating MCP 2025-06-18 or a later supported version, object output schemas are exposed as `Tool.outputSchema`. Successful calls return `structuredContent` parsed from the primary, already-redacted JSON text, while retaining the original text and any additional trace content. The bridge validates that object against an independent snapshot of the advertised schema, including references and constraints, after redaction; mismatches return a payload-free `isError` result. Validation follows the declared JSON Schema dialect (Draft 2020-12 by default), resolves local references and anchors, and never fetches external schema URLs. References in inactive branches and unused definitions must also resolve locally; literal JSON defaults and examples are preserved. Non-finite numbers, including exponent overflow, cannot become structured JSON. Non-object results and custom text formats remain text-only when no object output schema is advertised. Async task submission tools omit the final module output schema.
+
+Clients negotiating 2025-03-26 or 2024-11-05 retain text-only tools and results. Stdio and SSE use the negotiated session version; Streamable HTTP uses the trusted `MCP-Protocol-Version` header on each request, defaulting to 2025-03-26 when absent. Client-supplied request metadata cannot enable structured output.
+
 ## Development
 
 ```bash
 git clone https://github.com/aiperceivable/apcore-mcp-python.git
-cd apcore-mcp
+cd apcore-mcp-python
 pip install -e ".[dev]"
-pytest                           # ~689 tests
+pytest                           # full test suite
 pytest --cov                     # with coverage report
 ```
 

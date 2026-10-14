@@ -344,7 +344,8 @@ class TestTM4TransportIntegration:
         # The protocol session is run through _run_scoped, not bare server.run.
         mock_scoped.assert_awaited_once()
         # A concrete session id (the transport's mcp_session_id) is passed.
-        assert isinstance(mock_scoped.await_args.args[-1], str)
+        assert isinstance(mock_scoped.await_args.args[-2], str)
+        assert mock_scoped.await_args.args[-1] is True
         assert mock_scoped.await_args.args[-1]
 
     @pytest.mark.asyncio

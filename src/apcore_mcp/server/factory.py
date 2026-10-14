@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+from copy import deepcopy
+from decimal import Decimal, DecimalException
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
+import jsonschema  # type: ignore[import-untyped]  # MCP supplies jsonschema without its optional typing stubs.
 from apcore.schema.exporter import SchemaExporter
 from apcore.schema.types import SchemaDefinition
 from mcp import types as mcp_types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.models import InitializationOptions
+from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
 from pydantic import AnyUrl
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT7, DRAFT201909, DRAFT202012
 
 import apcore_mcp.markdown as _markdown
 from apcore_mcp.adapters.annotations import AnnotationMapper
@@ -21,7 +28,7 @@ from apcore_mcp.adapters.schema import SchemaConverter
 from apcore_mcp.auth.middleware import auth_identity_var
 from apcore_mcp.server.approval_bridge import ApprovalBridge
 from apcore_mcp.server.async_task_bridge import RESERVED_PREFIX, AsyncTaskBridge
-from apcore_mcp.server.transport import transport_session_var
+from apcore_mcp.server.transport import _protocol_source_var, transport_session_var
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +112,127 @@ _MANAGEMENT_SURFACE_ORDER = ("health", "usage", "manifest", "control")
 # a different number), so it must be updated here by hand when the spec the
 # management-extension contract (§6.6.5) lives in bumps.
 _PROTOCOL_SPEC_VERSION = "1.30.0"
+
+
+def _supports_structured_output() -> bool:
+    """Read protocol state from the MCP session or trusted HTTP request."""
+    from mcp.server.lowlevel.server import request_ctx
+
+    try:
+        context = request_ctx.get()
+    except LookupError:
+        return False
+    request = context.request
+    if _protocol_source_var.get() != "session" and request is not None and hasattr(request, "headers"):
+        version = request.headers.get("mcp-protocol-version", "2025-03-26")
+    else:
+        client_params = context.session.client_params
+        if client_params is None:
+            return False
+        requested = client_params.protocolVersion
+        version = requested if requested in SUPPORTED_PROTOCOL_VERSIONS else mcp_types.LATEST_PROTOCOL_VERSION
+    return version in SUPPORTED_PROTOCOL_VERSIONS and version >= "2025-06-18"
+
+
+def _reject_non_finite_json_constant(value: str) -> None:
+    raise ValueError("Non-finite numbers are not JSON values")
+
+
+def _parse_finite_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Non-finite numbers are not JSON values")
+    try:
+        exact = Decimal(value) == Decimal(repr(number))
+    except DecimalException:
+        exact = False
+    if not exact:
+        raise ValueError("JSON number cannot be represented without rounding")
+    return number
+
+
+def _select_output_validator(schema: dict[str, Any]) -> Any:
+    validator = jsonschema.validators.validator_for(
+        schema, default=jsonschema.Draft202012Validator if "$schema" not in schema else None
+    )
+    supported = (jsonschema.Draft7Validator, jsonschema.Draft201909Validator, jsonschema.Draft202012Validator)
+    if validator not in supported:
+        raise ValueError("Unsupported output schema dialect")
+    return validator
+
+
+def _validate_local_schema_references(schema: dict[str, Any]) -> None:
+    """Check references and one supported draft over genuine schema positions."""
+    validator = _select_output_validator(schema)
+    specification = {
+        jsonschema.Draft7Validator: DRAFT7,
+        jsonschema.Draft201909Validator: DRAFT201909,
+        jsonschema.Draft202012Validator: DRAFT202012,
+    }[validator]
+    root = Resource.from_contents(schema, default_specification=specification)
+    resolver = Registry().resolver_with_root(root)
+    pending = [(root, resolver)]
+    seen: set[int] = set()
+    while pending:
+        resource, context = pending.pop()
+        if id(resource.contents) in seen:
+            continue
+        seen.add(id(resource.contents))
+        if isinstance(resource.contents, dict):
+            if "$schema" in resource.contents and _select_output_validator(resource.contents) is not validator:
+                raise ValueError("Mixed output schema dialects are unsupported")
+            for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
+                reference = resource.contents.get(keyword)
+                if keyword in validator.VALIDATORS and isinstance(reference, str):
+                    resolved = context.lookup(reference)
+                    target = Resource.from_contents(resolved.contents, default_specification=specification)
+                    pending.append((target, resolved.resolver))
+        for child in resource.subresources():
+            pending.append((child, context.in_subresource(child)))
+
+
+def _build_call_result(
+    content: list[mcp_types.TextContent],
+    is_error: bool,
+    output_schema: dict[str, Any] | None,
+) -> mcp_types.CallToolResult:
+    """Project only the router's already-redacted JSON text as structured data."""
+    structured: dict[str, Any] | None = None
+    if not is_error and _supports_structured_output():
+        try:
+            candidate = (
+                json.loads(
+                    content[0].text,
+                    parse_constant=_reject_non_finite_json_constant,
+                    parse_float=_parse_finite_json_float,
+                )
+                if content
+                else None
+            )
+        except (ValueError, TypeError, RecursionError):
+            candidate = None
+        if isinstance(candidate, dict):
+            structured = candidate
+        if output_schema is not None:
+            try:
+                if structured is None:
+                    raise ValueError("Structured object output is required")
+                validator = _select_output_validator(output_schema)
+                validator.check_schema(output_schema)
+                _validate_local_schema_references(output_schema)
+                # An explicit registry resolves local resources without fetching URLs.
+                validator(output_schema, registry=Registry()).validate(structured)
+            except Exception:
+                # Validation messages can quote output values, including secrets.
+                return mcp_types.CallToolResult(
+                    content=[
+                        mcp_types.TextContent(
+                            type="text", text="Output does not match the advertised output schema after redaction"
+                        )
+                    ],
+                    isError=True,
+                )
+    return mcp_types.CallToolResult(content=[*content], structuredContent=structured, isError=is_error)
 
 
 class MCPServerFactory:
@@ -303,6 +431,13 @@ class MCPServerFactory:
             name=tool_name,
             description=description,
             inputSchema=input_schema,
+            outputSchema=(
+                deepcopy(descriptor.output_schema)
+                if isinstance(getattr(descriptor, "output_schema", None), dict)
+                and descriptor.output_schema.get("type") == "object"
+                and not AsyncTaskBridge.is_async_module(descriptor)
+                else None
+            ),
             annotations=tool_annotations,
             _meta=meta,
         )
@@ -381,7 +516,8 @@ class MCPServerFactory:
 
         Args:
             server: The MCP Server to register handlers on.
-            tools: List of Tool objects to expose via list_tools.
+            tools: Tool objects exposed by list_tools; each call reads their
+                current output schemas to keep discovery and validation aligned.
             router: A router with an async handle_call(name, arguments, extra)
                     method that returns (content_list, is_error, trace_id).
             async_bridge: Optional :class:`AsyncTaskBridge`. When present,
@@ -404,10 +540,12 @@ class MCPServerFactory:
 
         @server.list_tools()
         async def handle_list_tools() -> list[mcp_types.Tool]:
-            return list(combined_tools)
+            if _supports_structured_output():
+                return list(combined_tools)
+            return [tool.model_copy(update={"outputSchema": None}) for tool in combined_tools]
 
         @server.call_tool()
-        async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextContent]:
+        async def handle_call_tool(name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
             from mcp.server.lowlevel.server import request_ctx
 
             ctx = request_ctx.get()
@@ -494,24 +632,18 @@ class MCPServerFactory:
             else:
                 content, is_error, _trace_id = await router.handle_call(name, arguments or {}, extra=extra)
 
-            # NOTE: The MCP SDK decorator always wraps our return in
-            # CallToolResult(isError=False). Setting isError=True or _meta
-            # is not supported by the current SDK decorator. For errors,
-            # we raise so the SDK sets isError=True on the CallToolResult.
-            # Per-content `meta` (TextContent-level _meta) is allowed and is
-            # used to carry W3C `traceparent` back to the client.
+            # A direct CallToolResult preserves error status and text metadata.
             text_contents: list[mcp_types.TextContent] = []
             for item in content:
                 if item.get("type") != "text":
                     continue
                 item_meta = item.get("_meta")
                 if isinstance(item_meta, dict) and item_meta:
-                    text_contents.append(mcp_types.TextContent(type="text", text=item["text"], meta=item_meta))
+                    text_contents.append(mcp_types.TextContent(type="text", text=item["text"], _meta=item_meta))
                 else:
                     text_contents.append(mcp_types.TextContent(type="text", text=item["text"]))
-            if is_error:
-                raise Exception(text_contents[0].text if text_contents else "Unknown error")
-            return text_contents
+            output_schema = next((tool.outputSchema for tool in reversed(combined_tools) if tool.name == name), None)
+            return _build_call_result(text_contents, is_error, output_schema)
 
     def register_resource_handlers(
         self,
