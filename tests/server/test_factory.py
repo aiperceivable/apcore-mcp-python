@@ -135,13 +135,11 @@ class TestBuildTool:
     def test_build_tool_empty_schema(
         self, factory: MCPServerFactory, empty_schema_descriptor: ModuleDescriptor
     ) -> None:
-        """build_tool handles empty input schema; in strict mode (default)
-        also injects additionalProperties:false per [SC-10]."""
+        """An empty runtime schema accepts arbitrary object properties."""
         tool = factory.build_tool(empty_schema_descriptor)
         assert tool.inputSchema == {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         }
 
     def test_build_tool_destructive_annotations(
@@ -297,10 +295,7 @@ class TestBuildTools:
         bad_descriptor = ModuleDescriptor(
             module_id="bad.module",
             description="will fail",
-            input_schema={
-                "$defs": {},
-                "properties": {"x": {"$ref": "#/$defs/Missing"}},
-            },
+            input_schema=["invalid schema"],
             output_schema={},
         )
         registry = StubRegistry([simple_descriptor, bad_descriptor])
@@ -702,32 +697,15 @@ class TestBuildInitOptionsManagementExtension:
         assert opts_with.server_name == opts_without.server_name
 
 
-class TestADFA2PerCallStrict:
-    """[A-D-FA-2] build_tool's strict argument reaches the local converter.
+class TestFactoryInputContract:
+    """Legacy strict arguments cannot alter the runtime input contract."""
 
-    The flag used to gate only the registry export_schema attempt, so
-    build_tool(descriptor, strict=False) on a strict factory still emitted
-    additionalProperties: false. TypeScript honours the per-call flag
-    (factory.ts:188).
-    """
-
-    def test_strict_false_suppresses_additional_properties(self, simple_descriptor) -> None:
-        factory = MCPServerFactory(strict=True)
-
-        tool = factory.build_tool(simple_descriptor, strict=False)
-
-        assert "additionalProperties" not in tool.inputSchema
-
-    def test_strict_true_overrides_a_lax_factory(self, simple_descriptor) -> None:
-        factory = MCPServerFactory(strict=False)
-
-        tool = factory.build_tool(simple_descriptor, strict=True)
-
-        assert tool.inputSchema["additionalProperties"] is False
-
-    def test_strict_none_keeps_the_factory_setting(self, simple_descriptor) -> None:
-        assert MCPServerFactory(strict=True).build_tool(simple_descriptor).inputSchema["additionalProperties"] is False
-        assert "additionalProperties" not in MCPServerFactory(strict=False).build_tool(simple_descriptor).inputSchema
+    @pytest.mark.parametrize("factory_strict", [False, True])
+    @pytest.mark.parametrize("strict", [None, False, True])
+    def test_preserves_runtime_schema(self, simple_descriptor, factory_strict, strict) -> None:
+        factory = MCPServerFactory(strict=factory_strict)
+        tool = factory.build_tool(simple_descriptor, strict=strict)
+        assert tool.inputSchema == simple_descriptor.input_schema
 
 
 class TestRichDescription:

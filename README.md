@@ -25,6 +25,16 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
  Server      Tools
 ```
 
+## MCP input schemas
+
+MCP discovery preserves the module's runtime input semantics: optional properties,
+explicit nullable values, defaults, local references and free-form objects remain
+unchanged. Arguments pass through without null-placeholder deletion. Explicit
+additional-property restrictions still apply. Factory `strict` options are retained
+for compatibility and do not project OpenAI strict schemas onto MCP. OpenAI tool
+exports and standalone SchemaConverter APIs retain their existing behavior.
+
+
 ## Design Philosophy
 
 - **Zero intrusion** — your apcore project needs no code changes, no imports, no dependencies on apcore-mcp

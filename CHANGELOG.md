@@ -6,7 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.23.1] - 2026-10-19
+
+### Fixed — MCP object root validation
+
+- Reject root type declarations that cannot accept object inputs instead of silently replacing them. Preserve object-containing unions, reject invalid unions, and verify discovery and preflight behavior with 17 shared root-schema cases.
+
+### Fixed
+
+- Resolve apcore-mcp #20 consistently across Python, TypeScript and Rust: MCP
+  `inputSchema` is an independent copy of the runtime descriptor schema, with
+  only the required object root normalized. Optionality, explicit nullability,
+  defaults, local references and additional-property policies are preserved.
+- Stop sourcing MCP inputs from OpenAI strict exports and stop implicitly
+  injecting `additionalProperties: false`. Arguments reach native preflight and
+  execution unchanged; meaningful explicit nulls are never globally removed.
+- Retain factory strict/registry arguments for source compatibility. They no
+  longer choose an MCP schema projection. Standalone SchemaConverter and
+  OpenAI strict exports retain their existing behavior.
+
+### Tests
+
+- Shared `mcp_input_contract.json` contract 1.0: 11 schemas, 27 valid/invalid
+  inputs, real Registry + Executor + router paths, with `validate_inputs` on
+  and off. Validate schema/input immutability, defaults, nulls, required fields,
+  nested arrays/objects, free-form payloads and local references.
+- `tool_mapping.json` contract 2.0 reflects runtime-faithful MCP discovery.
+- Final full suite: 1183 passed, 0 failed; coverage 91.39% (90% gate passed).
+
 
 ## [0.23.0] - 2026-10-14
 

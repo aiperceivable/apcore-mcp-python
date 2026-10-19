@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apcore-mcp"
-version = "0.23.0"
+version = "0.23.1"
 description = "Automatic MCP Server & OpenAI Tools Bridge for apcore"
 readme = "README.md"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.32.1",
+    "apcore>=0.32.2",
     "mcp>=1.26,<2.0",
     "jsonschema>=4.20,<5",
     "referencing>=0.30,<1",

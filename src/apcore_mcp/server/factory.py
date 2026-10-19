@@ -24,7 +24,6 @@ from referencing.jsonschema import DRAFT7, DRAFT201909, DRAFT202012
 
 import apcore_mcp.markdown as _markdown
 from apcore_mcp.adapters.annotations import AnnotationMapper
-from apcore_mcp.adapters.schema import SchemaConverter
 from apcore_mcp.auth.middleware import auth_identity_var
 from apcore_mcp.server.approval_bridge import ApprovalBridge
 from apcore_mcp.server.async_task_bridge import RESERVED_PREFIX, AsyncTaskBridge
@@ -239,7 +238,6 @@ class MCPServerFactory:
     """Creates and configures MCP Server instances from apcore Registry."""
 
     def __init__(self, *, strict: bool = True, rich_description: bool = False) -> None:
-        self._strict = strict
         # When ``rich_description`` is True, MCP Tool descriptions are
         # rendered as apcore-toolkit Markdown (title, description,
         # behavior table, schemas, examples) instead of the plain
@@ -253,7 +251,6 @@ class MCPServerFactory:
         # per factory instance instead of one per descriptor (matches
         # the TS factory's `_warnedToolkitMissing` guard).
         self._warned_toolkit_missing = False
-        self._schema_converter = SchemaConverter(strict=strict)
         self._annotation_mapper = AnnotationMapper()
         self._schema_exporter = SchemaExporter()
         from apcore_mcp.adapters.errors import ErrorMapper
@@ -307,13 +304,15 @@ class MCPServerFactory:
         Mapping:
         - descriptor.module_id -> Tool.name
         - descriptor.description -> Tool.description
-        - SchemaConverter.convert_input_schema(descriptor) -> Tool.inputSchema
+        - descriptor.input_schema -> independent MCP Tool.inputSchema copy
         - SchemaExporter.export_mcp() -> ToolAnnotations hints (camelCase)
         - AnnotationMapper -> requires_approval, streaming (_meta), title
 
         Args:
             descriptor: ModuleDescriptor with module_id, description,
                         input_schema, and annotations attributes.
+            registry: Retained for source compatibility; strict exports are not used.
+            strict: Retained for source compatibility; runtime schema semantics win.
 
         Returns:
             An MCP Tool object ready for registration.
@@ -322,37 +321,24 @@ class MCPServerFactory:
         if getattr(descriptor, "module_id", "").startswith(RESERVED_PREFIX):
             raise ValueError(f"Module id {descriptor.module_id!r} uses reserved prefix {RESERVED_PREFIX!r}")
 
-        if strict is None:
-            strict = self._strict
-
-        # [A-D-012] Strict-Schema-Sourcing: prefer the registry's
-        # `export_schema(module_id, strict=True)` when available, matching
-        # the TypeScript factory and the spec at
-        # docs/features/mcp-server-factory.md "Strict Schema Sourcing".
-        # Falls back to local SchemaConverter when the registry doesn't
-        # expose export_schema or the call fails.
-        input_schema: Any | None = None
-        if strict and registry is not None and callable(getattr(registry, "export_schema", None)):
-            try:
-                exported = registry.export_schema(descriptor.module_id, strict=True)
-                if isinstance(exported, dict):
-                    candidate = exported.get("input_schema") or exported.get("inputSchema")
-                    if isinstance(candidate, dict):
-                        input_schema = candidate
-            except Exception as exc:  # noqa: BLE001 — fall through to local converter
-                logger.debug(
-                    "registry.export_schema(strict=True) raised for %s; falling back to local converter: %s",
-                    descriptor.module_id,
-                    exc,
-                )
-        if input_schema is None:
-            # [A-D-FA-2] Pass the resolved per-call flag through. Pre-fix the
-            # local converter used its construction-time strict setting, so
-            # build_tool(descriptor, strict=False) on a strict factory still
-            # emitted a strict schema and the argument only gated whether the
-            # registry export_schema path was attempted. TypeScript honours the
-            # per-call flag (factory.ts:188).
-            input_schema = self._schema_converter.convert_input_schema(descriptor, strict=strict)
+        # MCP uses the runtime's input contract. OpenAI strict export makes
+        # optional properties required/nullable and cannot be used here.
+        # Retain strict/registry parameters for source compatibility only.
+        source_schema = descriptor.input_schema
+        if source_schema is not None and not isinstance(source_schema, dict):
+            raise ValueError("MCP input schema must be an object")
+        input_schema = deepcopy(source_schema) or {"properties": {}}
+        root_type = input_schema.get("type", "object")
+        valid_types = {"object", "array", "string", "number", "integer", "boolean", "null"}
+        object_union = (
+            isinstance(root_type, list)
+            and "object" in root_type
+            and all(isinstance(member, str) and member in valid_types for member in root_type)
+            and len(set(root_type)) == len(root_type)
+        )
+        if root_type != "object" and not object_union:
+            raise ValueError("MCP input schema must allow an object root")
+        input_schema["type"] = "object"
 
         # NOTE: Python uses SchemaExporter.export_mcp() for annotation mapping,
         # while TypeScript uses AnnotationMapper.toMcpAnnotations() directly.
@@ -481,8 +467,7 @@ class MCPServerFactory:
                 logger.warning("Skipped module %s: no definition found", module_id)
                 continue
             try:
-                # [A-D-012] Pass the registry so build_tool can prefer
-                # registry.export_schema(strict=True) over local conversion.
+                # Keep compatibility arguments while preserving the runtime schema.
                 tools.append(self.build_tool(descriptor, registry=registry, strict=strict))
             except ValueError as e:
                 # Reserved-prefix violations are hard config errors — re-raise so
