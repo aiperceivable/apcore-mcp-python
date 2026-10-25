@@ -28,6 +28,17 @@ _owner_lock = threading.Lock()
 _selected_transport: ContextVar[str | None] = ContextVar("apcore_mcp_selected_transport", default=None)
 
 
+@dataclass
+class _Diagnostics:
+    protocol: TextIO
+    cleanup: contextlib.ExitStack
+    users: int = 0
+
+
+_diagnostics: _Diagnostics | None = None
+_diagnostics_lock = threading.RLock()
+
+
 def configured_transport(transport: str) -> str:
     """Match the Config Bus transport precedence before constructing a backend."""
     try:
@@ -65,14 +76,19 @@ def _redirect_diagnostics() -> Iterator[TextIO]:
             finally:
                 try:
                     original_stdout.flush()
+                except BaseException as exc:
+                    # A failed flush can retain diagnostics in stdout's buffer.
+                    # Keep fd 1 on the diagnostic destination, including during
+                    # interpreter shutdown; restoring it could corrupt MCP.
+                    _poisoned_reason = f"diagnostic flush failed: {exc}"
+                    raise
+                try:
                     protocol.flush()
                 finally:
                     try:
                         os.dup2(protocol_fd, 1)
                     except OSError as exc:
-                        # The process output destination is now unknown. Never
-                        # let another server reserve redirected stderr as MCP.
-                        _poisoned_reason = str(exc)
+                        _poisoned_reason = f"stdout restoration failed: {exc}"
                         raise
         return
 
@@ -88,9 +104,47 @@ def _redirect_diagnostics() -> Iterator[TextIO]:
     with contextlib.ExitStack() as cleanup:
         for handler in handlers:
             handler.setStream(sys.stderr)
-            cleanup.callback(handler.setStream, original_stdout)
+            cleanup.callback(_restore_handler, handler, original_stdout)
         with contextlib.redirect_stdout(sys.stderr):
             yield cast(TextIO, original_stdout)
+
+
+def _restore_handler(handler: logging.StreamHandler[TextIO], stream: TextIO) -> None:
+    handler.acquire()
+    try:
+        try:
+            handler.flush()
+        finally:
+            handler.stream = stream
+    finally:
+        handler.release()
+
+
+@contextlib.contextmanager
+def _diagnostic_scope() -> Iterator[TextIO]:
+    """Share redirection across bootstrap work without sharing protocol claims."""
+    global _diagnostics
+    with _diagnostics_lock:
+        if _poisoned_reason is not None:
+            raise RuntimeError(f"MCP stdio ownership is poisoned after unsafe stdout cleanup: {_poisoned_reason}")
+        if _diagnostics is None:
+            cleanup = contextlib.ExitStack()
+            try:
+                protocol = cleanup.enter_context(_redirect_diagnostics())
+            except BaseException:
+                cleanup.close()
+                raise
+            _diagnostics = _Diagnostics(protocol, cleanup)
+        state = _diagnostics
+        state.users += 1
+    try:
+        yield state.protocol
+    finally:
+        with _diagnostics_lock:
+            state.users -= 1
+            if state.users == 0:
+                _diagnostics = None
+                state.cleanup.close()
 
 
 @contextlib.contextmanager
@@ -118,9 +172,7 @@ def stdio_output(*, transport: bool = False) -> Iterator[TextIO]:
     if not _owner_lock.acquire(blocking=False):
         raise RuntimeError("MCP stdio is already owned by another execution context")
     try:
-        if _poisoned_reason is not None:
-            raise RuntimeError(f"MCP stdio ownership is poisoned after stdout restoration failed: {_poisoned_reason}")
-        with _redirect_diagnostics() as protocol:
+        with _diagnostic_scope() as protocol:
             current = _Owner(threading.get_ident(), protocol, transport)
             _owner = current
             token = _owner_context.set(current)
@@ -152,10 +204,11 @@ def configured_output(transport: str) -> Iterator[None]:
             yield
         return
     with contextlib.ExitStack() as scope:
-        scope.enter_context(stdio_output())
-        selected = configured_transport(transport)
-        if selected.lower() != "stdio":
-            scope.close()
+        with _diagnostic_scope():
+            selected = configured_transport(transport)
+            # Acquire the selected protocol owner before bootstrap releases
+            # redirection. HTTP/SSE never need an exclusive stdio claim.
+            scope.enter_context(output_scope(selected))
         token = _selected_transport.set(selected)
         try:
             yield

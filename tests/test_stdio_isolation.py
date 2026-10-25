@@ -429,31 +429,121 @@ def test_failed_fd_restoration_poison_rejects_future_owner() -> None:
     assert "diagnostic" in completed.stderr
 
 
-def test_failed_flush_with_successful_fd_restore_allows_next_owner() -> None:
+def test_failed_diagnostic_flush_never_reopens_protocol_stdout() -> None:
     completed = run_script("""
-        import sys
-        from unittest.mock import patch
+        import os, sys
         from apcore_mcp._stdio import stdio_output
-        original_flush = sys.stdout.flush
-        calls = []
-        def fail_exit_flush():
-            calls.append(None)
-            if len(calls) == 2:
-                raise OSError('flush failure')
-            return original_flush()
-        with patch.object(sys.stdout, 'flush', fail_exit_flush):
-            try:
-                with stdio_output(): pass
-            except OSError as exc:
-                assert str(exc) == 'flush failure'
-            else:
-                raise AssertionError('flush error was swallowed')
+        read_fd, write_fd = os.pipe()
+        os.close(read_fd)
+        diagnostics = os.fdopen(write_fd, 'w', encoding='utf-8')
+        sys.stderr = diagnostics
+        try:
+            with stdio_output():
+                print('retained diagnostic bytes')
+        except BrokenPipeError:
+            pass
+        else:
+            raise AssertionError('diagnostic flush should fail')
+        try:
+            with stdio_output(transport=True) as protocol:
+                protocol.write('forbidden next protocol session')
+        except RuntimeError as exc:
+            assert 'poisoned' in str(exc)
+        else:
+            raise AssertionError('unsafe owner was accepted')
+        # A later flush must still target the diagnostic pipe, never the old
+        # protocol endpoint. Also leave pending bytes for interpreter shutdown.
+        try:
+            sys.stdout.flush()
+        except BrokenPipeError:
+            pass
+        else:
+            raise AssertionError('stdout was restored over retained diagnostics')
+        # Keep stderr available for interpreter diagnostics; fd 1 deliberately
+        # remains fail-closed. Python may report its failed final flush here.
+        sys.stderr = sys.__stderr__
+    """)
+    assert completed.returncode in (0, 120), completed.stderr
+    assert completed.stdout == ""
+    assert "AssertionError" not in completed.stderr
+
+
+def test_protocol_flush_failure_still_restores_stdout() -> None:
+    completed = run_script("""
+        from apcore_mcp._stdio import stdio_output
+        try:
+            with stdio_output() as protocol:
+                original_flush = protocol.flush
+                calls = []
+                def fail_once():
+                    calls.append(None)
+                    if len(calls) == 1: raise OSError('protocol flush failed')
+                    return original_flush()
+                protocol.flush = fail_once
+        except OSError as exc:
+            assert str(exc) == 'protocol flush failed'
+        else:
+            raise AssertionError('protocol flush error was swallowed')
         with stdio_output() as protocol:
-            protocol.write('protocol after flush failure\\n'); protocol.flush()
+            protocol.write('next protocol session\\n'); protocol.flush()
         print('restored')
     """)
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout == "protocol after flush failure\nrestored\n"
+    assert completed.stdout == "next protocol session\nrestored\n"
+
+
+def test_custom_handler_restored_when_diagnostic_flush_fails() -> None:
+    completed = run_script("""
+        import io, logging, os, sys
+        from apcore_mcp._stdio import stdio_output
+        protocol = io.StringIO()
+        read_fd, write_fd = os.pipe(); os.close(read_fd)
+        diagnostics = os.fdopen(write_fd, 'w', encoding='utf-8')
+        sys.stdout = protocol; sys.stderr = diagnostics
+        logger = logging.getLogger('host')
+        handler = logging.StreamHandler(protocol); logger.addHandler(handler)
+        try:
+            with stdio_output(): print('buffered diagnostic')
+        except BrokenPipeError:
+            pass
+        else:
+            raise AssertionError('diagnostic flush should fail')
+        assert sys.stdout is protocol
+        assert handler.stream is protocol, 'host handler left on broken diagnostics'
+        logger.removeHandler(handler)
+        sys.stderr = sys.__stderr__
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+
+
+@pytest.mark.parametrize("transport", ["sse", "streamable-http"])
+def test_http_serve_coexists_with_other_thread_stdio_owner(transport: str) -> None:
+    completed = run_script(f"""
+        import threading
+        from unittest.mock import patch
+        from apcore_mcp import serve, APCoreMCP
+        from apcore_mcp._stdio import stdio_output
+        entered = threading.Event(); release = threading.Event()
+        def own_stdio():
+            with stdio_output(transport=True):
+                entered.set(); assert release.wait(5)
+        thread = threading.Thread(target=own_stdio); thread.start()
+        assert entered.wait(5)
+        async def run(): print('http runtime')
+        def construct(self, *args, **kwargs): self._registry = object(); self._output_format = None
+        try:
+            with (patch.object(APCoreMCP, '__init__', construct),
+                  patch.object(APCoreMCP, '_build_serve_coro', lambda *a, **k: run)):
+                serve(object(), transport={transport!r})
+        finally:
+            release.set(); thread.join(5)
+        assert not thread.is_alive()
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "restored\n"
+    assert "http runtime" in completed.stderr
 
 
 @pytest.mark.parametrize("stop_early", [False, True])
@@ -496,12 +586,15 @@ def test_threaded_server_finalizes_core_background_tasks_before_stdout_restore(s
     assert "Task was destroyed" not in completed.stderr
 
 
-def test_threaded_server_finalizes_generators_and_executor_before_stdout_restore() -> None:
-    completed = run_script("""
-        import asyncio, time
+@pytest.mark.parametrize("stop_early", [False, True])
+def test_threaded_server_finalizes_generators_and_executor_before_stdout_restore(stop_early: bool) -> None:
+    completed = run_script(f"""
+        import asyncio, threading, time
         from unittest.mock import patch
         from apcore_mcp import MCPServer
         retained = []
+        ready = threading.Event()
+        release_worker = threading.Event()
         async def generator():
             try:
                 yield 1
@@ -509,7 +602,8 @@ def test_threaded_server_finalizes_generators_and_executor_before_stdout_restore
                 await asyncio.sleep(0)
                 print('generator-finally')
         def worker():
-            time.sleep(.05)
+            ready.set()
+            assert release_worker.wait(5)
             print('executor-finally')
         class App:
             def _build_serve_coro(self, **kwargs):
@@ -517,12 +611,80 @@ def test_threaded_server_finalizes_generators_and_executor_before_stdout_restore
                     iterator = generator(); retained.append(iterator)
                     await anext(iterator)
                     asyncio.get_running_loop().run_in_executor(None, worker)
+                    if {stop_early!r}: await asyncio.Event().wait()
                 return run
         with patch.object(MCPServer, '_build_app', lambda self: App()):
-            server = MCPServer(object()); server.start(); server.wait()
+            server = MCPServer(object()); server.start()
+            assert ready.wait(5)
+            if {stop_early!r}: server.stop()
+            release_worker.set()
+            server.wait()
         print('restored')
     """)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout == "restored\n"
     assert "generator-finally" in completed.stderr
     assert "executor-finally" in completed.stderr
+
+
+def test_configuration_diagnostics_remain_guarded_after_other_owner_exits() -> None:
+    completed = run_script("""
+        import threading
+        from unittest.mock import patch
+        import apcore
+        from apcore_mcp._stdio import configured_output, stdio_output
+        entered = threading.Event(); release = threading.Event(); exited = threading.Event()
+        def own_stdio():
+            with stdio_output(transport=True):
+                entered.set(); assert release.wait(5)
+            exited.set()
+        class Config:
+            def get(self, key): return 'streamable-http' if key == 'mcp.transport' else None
+        def load():
+            print('config-before-owner-exit')
+            release.set(); assert exited.wait(5)
+            print('config-after-owner-exit')
+            return Config()
+        thread = threading.Thread(target=own_stdio); thread.start()
+        assert entered.wait(5)
+        try:
+            with patch.object(apcore.Config, 'load', load):
+                with configured_output('streamable-http'):
+                    print('http-normal-output')
+        finally:
+            release.set(); thread.join(5)
+        assert not thread.is_alive()
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "http-normal-output\nrestored\n"
+    assert completed.stderr == "config-before-owner-exit\nconfig-after-owner-exit\n"
+
+
+def test_config_bus_stdio_override_still_conflicts_with_other_owner() -> None:
+    completed = run_script("""
+        import threading
+        from unittest.mock import patch
+        import apcore
+        from apcore_mcp._stdio import configured_output, stdio_output
+        entered = threading.Event(); release = threading.Event()
+        def own_stdio():
+            with stdio_output(transport=True):
+                entered.set(); assert release.wait(5)
+        class Config:
+            def get(self, key): return 'stdio' if key == 'mcp.transport' else None
+        thread = threading.Thread(target=own_stdio); thread.start()
+        assert entered.wait(5)
+        try:
+            with patch.object(apcore.Config, 'load', lambda: Config()):
+                try:
+                    with configured_output('streamable-http'):
+                        raise AssertionError('configured stdio bypassed the owner')
+                except RuntimeError as exc:
+                    assert 'already owned' in str(exc)
+        finally:
+            release.set(); thread.join(5)
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "restored\n"
