@@ -220,12 +220,46 @@ class MCPServer:
                 asyncio.set_event_loop(self._loop)
                 self._started.set()
 
+                serve_task = self._loop.create_task(run_coro())
                 try:
-                    self._loop.run_until_complete(run_coro())
+                    self._loop.run_until_complete(serve_task)
                 finally:
-                    self._loop.close()
+                    try:
+                        self._loop.run_until_complete(self._finalize_loop(serve_task))
+                    finally:
+                        self._loop.close()
         except Exception as exc:
             self._start_error = exc
             self._started.set()  # unblock start() so it can surface the error
         finally:
             self._stopped.set()
+
+    async def _finalize_loop(self, serve_task: asyncio.Task[None]) -> None:
+        """Finish owned-loop cleanup before releasing process stdout.
+
+        Cancel the serving task first so transport/session cleanup can await
+        its managed tasks without a second simultaneous cancellation. Then
+        finish remaining tasks, async generators and executor workers, as an
+        asyncio.run() lifetime does for the blocking convenience API.
+        """
+        if not serve_task.done():
+            serve_task.cancel()
+            await asyncio.gather(serve_task, return_exceptions=True)
+        current_task = asyncio.current_task()
+        pending = asyncio.all_tasks() - {current_task}
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        loop = asyncio.get_running_loop()
+        for task in pending:
+            if not task.cancelled() and task.exception() is not None:
+                loop.call_exception_handler(
+                    {
+                        "message": "Unhandled exception during MCPServer shutdown",
+                        "exception": task.exception(),
+                        "task": task,
+                    }
+                )
+        await loop.shutdown_asyncgens()
+        await loop.shutdown_default_executor()

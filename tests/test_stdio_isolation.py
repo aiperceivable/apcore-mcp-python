@@ -454,3 +454,75 @@ def test_failed_flush_with_successful_fd_restore_allows_next_owner() -> None:
     """)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout == "protocol after flush failure\nrestored\n"
+
+
+@pytest.mark.parametrize("stop_early", [False, True])
+def test_threaded_server_finalizes_core_background_tasks_before_stdout_restore(stop_early: bool) -> None:
+    completed = run_script(f"""
+        import asyncio, threading
+        from unittest.mock import patch
+        from apcore.async_task import AsyncTaskManager
+        from apcore_mcp import MCPServer
+        started = threading.Event()
+        retained = []
+        class Executor:
+            async def call_async(self, *args, **kwargs):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    await asyncio.sleep(0)
+                    print('core-task-finally')
+        class App:
+            def _build_serve_coro(self, **kwargs):
+                async def run():
+                    manager = AsyncTaskManager(Executor())
+                    retained.append(manager)
+                    await manager.submit('background', {{}})
+                    while not started.is_set(): await asyncio.sleep(0)
+                    if {stop_early!r}: await asyncio.Event().wait()
+                return run
+        with patch.object(MCPServer, '_build_app', lambda self: App()):
+            server = MCPServer(object()); server.start()
+            assert started.wait(5)
+            if {stop_early!r}: server.stop()
+            server.wait()
+        assert not asyncio.all_tasks(server._loop)
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "restored\n"
+    assert "core-task-finally" in completed.stderr
+    assert "Task was destroyed" not in completed.stderr
+
+
+def test_threaded_server_finalizes_generators_and_executor_before_stdout_restore() -> None:
+    completed = run_script("""
+        import asyncio, time
+        from unittest.mock import patch
+        from apcore_mcp import MCPServer
+        retained = []
+        async def generator():
+            try:
+                yield 1
+            finally:
+                await asyncio.sleep(0)
+                print('generator-finally')
+        def worker():
+            time.sleep(.05)
+            print('executor-finally')
+        class App:
+            def _build_serve_coro(self, **kwargs):
+                async def run():
+                    iterator = generator(); retained.append(iterator)
+                    await anext(iterator)
+                    asyncio.get_running_loop().run_in_executor(None, worker)
+                return run
+        with patch.object(MCPServer, '_build_app', lambda self: App()):
+            server = MCPServer(object()); server.start(); server.wait()
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "restored\n"
+    assert "generator-finally" in completed.stderr
+    assert "executor-finally" in completed.stderr

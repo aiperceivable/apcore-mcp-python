@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preparation. Route diagnostic prints, held stdout logging handlers, core trace
   exporters and event subscribers to stderr while keeping MCP responses on an
   independent output stream. Restore host output on exit or cancellation and
-  reject competing stdio owners. HTTP/SSE runtime output is unchanged.
+  reject competing stdio owners. Finalize threaded-server tasks, async generators
+  and executor workers before restoring output. HTTP/SSE runtime output is unchanged.
 
 ## [0.23.1] - 2026-10-19
 

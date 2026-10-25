@@ -347,7 +347,9 @@ distinct stderr descriptor, protection covers Python stdout lookups and
 existing stdout logging handlers. A saved raw stream in that mode, an explicitly duplicated
 protocol descriptor, or a cached native Windows standard handle can bypass the
 scope. Do not write to those endpoints or merge stderr into stdout in a stdio
-launcher. Finish application background work before the server stops.
+launcher. The threaded `MCPServer` cancels and awaits its loop tasks, finalizes async
+generators, and waits for executor workers before restoring stdout. Finish
+application background work running outside that loop before the server stops.
 
 ### `serve()` (function-based)
 
