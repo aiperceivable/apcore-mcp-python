@@ -6,17 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.23.2] - 2026-10-25
 
 ### Fixed
 
-- Reserve protocol stdout for the full stdio lifecycle, including CLI discovery,
-  convenience API construction, startup/shutdown callbacks, and threaded server
-  preparation. Route diagnostic prints, held stdout logging handlers, core trace
-  exporters and event subscribers to stderr while keeping MCP responses on an
-  independent output stream. Restore host output on exit or cancellation and
-  reject competing stdio owners. Finalize threaded-server tasks, async generators
-  and executor workers before restoring output. HTTP/SSE runtime output is unchanged.
+- Reserve protocol stdout throughout stdio startup, CLI configuration/discovery,
+  convenience API construction, threaded-server preparation, execution and
+  startup/shutdown callbacks. Route diagnostic prints, raw writes to fd 1,
+  existing stdout logging handlers, core trace exporters and event subscribers
+  to stderr while MCP responses use a separate protocol stream.
+- Share nested stdio scopes, reject independent competing owners and duplicate
+  active transports, and allow sequential sessions after successful cleanup.
+- Finalize threaded-server tasks, async generators and executor workers before
+  releasing stdout on normal completion or `stop()`.
+- Fail closed after diagnostic stdout buffering cannot be flushed safely: keep
+  fd 1 on diagnostics and reject future stdio ownership so retained bytes cannot
+  leak into a later protocol session or interpreter shutdown. Reject future
+  ownership after failed descriptor restoration as well; a protocol-only flush
+  failure still restores ordinary stdout.
+- Restore existing host logging-handler streams even when flushing their
+  temporary diagnostic stream fails.
+- Separate shared configuration diagnostic redirection from exclusive protocol
+  ownership. HTTP/SSE startup can coexist with a stdio owner in another thread;
+  configuration diagnostics remain guarded if that owner exits during loading.
+  Config Bus transport overrides keep their existing precedence.
+
+### Tests
+
+- Cover noisy real stdio calls, errors and EOF, buffered broken-pipe failures,
+  nested/concurrent ownership, configuration overrides, handler restoration and
+  threaded cleanup on both normal completion and stop.
+- Exercise real HTTP and SSE listeners with successful MCP initialization and
+  tool calls. Verify ordinary runtime diagnostics stay on host stdout and an
+  independent host context can acquire/release stdio ownership while a request
+  remains active.
+
+### Compatibility
+
+- Keep public APIs and HTTP/SSE runtime output policy unchanged. Diagnostic
+  isolation is scoped to an active stdio or configuration-bootstrap lifetime.
+- Retain the Python core dependency floor at `apcore>=0.32.2` and optional
+  `apcore-toolkit>=0.14.0` extras.
 
 ## [0.23.1] - 2026-10-19
 
