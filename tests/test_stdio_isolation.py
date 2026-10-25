@@ -688,3 +688,87 @@ def test_config_bus_stdio_override_still_conflicts_with_other_owner() -> None:
     """)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout == "restored\n"
+
+
+@pytest.mark.parametrize("transport", ["sse", "streamable-http"])
+def test_live_http_runtime_keeps_host_stdout_and_allows_independent_stdio_owner(transport: str) -> None:
+    completed = run_script(f"""
+        import asyncio, socket, threading, time, urllib.error, urllib.request
+        from mcp import ClientSession
+        from mcp.client.sse import sse_client
+        from mcp.client.streamable_http import streamablehttp_client
+        from apcore_mcp import MCPServer
+        from apcore_mcp._stdio import stdio_output
+        from tests.conftest import ModuleDescriptor
+        from tests.test_serve_params import StubRegistry
+
+        started = threading.Event(); release = threading.Event()
+        class Executor:
+            def __init__(self):
+                self.registry = StubRegistry([ModuleDescriptor(
+                    module_id='live_output', description='Exercise live output policy',
+                    input_schema={{'type': 'object'}}, output_schema={{'type': 'object'}})])
+            async def call_async(self, module_id, inputs, context=None, **kwargs):
+                print('live-handler-before-lease', flush=True)
+                started.set()
+                assert await asyncio.to_thread(release.wait, 5)
+                print('live-handler-after-lease', flush=True)
+                return {{'ok': True}}
+
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            port = reservation.getsockname()[1]
+        server = MCPServer(Executor(), transport={transport!r}, port=port, async_tasks=False)
+        server.start()
+        try:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    with urllib.request.urlopen(server.address + '/health', timeout=.2) as response:
+                        assert response.status == 200
+                    break
+                except urllib.error.URLError:
+                    if time.monotonic() >= deadline: raise
+                    time.sleep(.02)
+
+            async def exercise():
+                client = (sse_client(server.address + '/sse', timeout=3, sse_read_timeout=5)
+                          if {transport!r} == 'sse' else
+                          streamablehttp_client(server.address + '/mcp/', timeout=3, sse_read_timeout=5))
+                async with client as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+                        request = asyncio.create_task(session.call_tool('live_output', {{}}))
+                        try:
+                            assert await asyncio.to_thread(started.wait, 3)
+                            # The handler is still active in the server thread.
+                            # This independent host context must acquire a fresh
+                            # protocol owner while HTTP remains live.
+                            assert not request.done()
+                            with stdio_output(transport=True) as protocol:
+                                print('host-lease-diagnostic')
+                                protocol.write('host-protocol-lease\\n'); protocol.flush()
+                        finally:
+                            release.set()
+                        result = await asyncio.wait_for(request, 5)
+                        assert not result.isError
+                        assert result.structuredContent == {{'ok': True}}
+                print('live-request-completed', flush=True)
+            asyncio.run(exercise())
+        finally:
+            release.set()
+            server.stop(); server.wait()
+        print('live-server-stopped', flush=True)
+    """)
+    assert completed.returncode == 0, completed.stderr
+    for marker in (
+        "live-handler-before-lease",
+        "host-protocol-lease",
+        "live-handler-after-lease",
+        "live-request-completed",
+        "live-server-stopped",
+    ):
+        assert marker in completed.stdout
+        assert marker not in completed.stderr
+    assert "host-lease-diagnostic" in completed.stderr
+    assert "host-lease-diagnostic" not in completed.stdout
