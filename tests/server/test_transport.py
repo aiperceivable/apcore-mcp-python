@@ -358,7 +358,7 @@ class TestTM4TransportIntegration:
         server = make_mock_server()
 
         @asynccontextmanager
-        async def fake_stdio():  # type: ignore[no-untyped-def]
+        async def fake_stdio(**kwargs):  # type: ignore[no-untyped-def]
             yield (object(), object())
 
         with (

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.routing import Mount, Route
 
+from apcore_mcp._stdio import configured_output
 from apcore_mcp._utils import resolve_executor, resolve_registry
 from apcore_mcp.auth.protocol import Authenticator
 from apcore_mcp.server.transport import MetricsExporter
@@ -979,46 +980,47 @@ class APCoreMCP:
         if output_format is not None:
             self._output_format = output_format
 
-        # Re-read Config Bus scalar overrides for transport/host/port — these
-        # are only meaningful at serve() time (the ASGI-app entry point ignores
-        # them).
-        _cfg = _load_config_bus_overrides(
-            registry=self._registry,
-            strategy=None,
-            load_pipeline=False,
-        )
-        scalars: dict[str, object] = _cfg["scalars"]  # type: ignore[assignment]
-        if "transport" in scalars:
-            transport = scalars["transport"]  # type: ignore[assignment]
-        if "host" in scalars:
-            host = scalars["host"]  # type: ignore[assignment]
-        if "port" in scalars:
-            port = scalars["port"]  # type: ignore[assignment]
-        if "explorer" in scalars:
-            explorer = scalars["explorer"]  # type: ignore[assignment]
-        if "explorer_prefix" in scalars:
-            explorer_prefix = scalars["explorer_prefix"]  # type: ignore[assignment]
+        with configured_output(transport):
+            # Re-read Config Bus scalar overrides for transport/host/port — these
+            # are only meaningful at serve() time (the ASGI-app entry point ignores
+            # them).
+            _cfg = _load_config_bus_overrides(
+                registry=self._registry,
+                strategy=None,
+                load_pipeline=False,
+            )
+            scalars: dict[str, object] = _cfg["scalars"]  # type: ignore[assignment]
+            if "transport" in scalars:
+                transport = scalars["transport"]  # type: ignore[assignment]
+            if "host" in scalars:
+                host = scalars["host"]  # type: ignore[assignment]
+            if "port" in scalars:
+                port = scalars["port"]  # type: ignore[assignment]
+            if "explorer" in scalars:
+                explorer = scalars["explorer"]  # type: ignore[assignment]
+            if "explorer_prefix" in scalars:
+                explorer_prefix = scalars["explorer_prefix"]  # type: ignore[assignment]
 
-        _run = self._build_serve_coro(
-            transport=transport,
-            host=host,
-            port=port,
-            explorer=explorer,
-            explorer_prefix=explorer_prefix,
-            allow_execute=allow_execute,
-            explorer_title=explorer_title,
-            explorer_project_name=explorer_project_name,
-            explorer_project_url=explorer_project_url,
-        )
+            _run = self._build_serve_coro(
+                transport=transport,
+                host=host,
+                port=port,
+                explorer=explorer,
+                explorer_prefix=explorer_prefix,
+                allow_execute=allow_execute,
+                explorer_title=explorer_title,
+                explorer_project_name=explorer_project_name,
+                explorer_project_url=explorer_project_url,
+            )
 
-        if on_startup is not None:
-            on_startup()
+            if on_startup is not None:
+                on_startup()
 
-        try:
-            asyncio.run(_run())
-        finally:
-            if on_shutdown is not None:
-                on_shutdown()
+            try:
+                asyncio.run(_run())
+            finally:
+                if on_shutdown is not None:
+                    on_shutdown()
 
     # ---------------------------------------------------------- async_serve()
     @contextlib.asynccontextmanager

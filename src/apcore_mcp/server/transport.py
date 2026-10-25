@@ -21,6 +21,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
+from apcore_mcp._stdio import stdio_output
+
 logger = logging.getLogger(__name__)
 
 
@@ -233,13 +235,14 @@ class TransportManager:
         init_options: InitializationOptions,
     ) -> None:
         """Start MCP server with stdio transport. Blocks until connection closes."""
-        logger.info("Starting stdio transport")
-        # [TM-4] stdio has no wire-level session id; synthesize one so async
-        # tasks submitted over this connection are still tracked and cancelled
-        # when the stdio stream closes.
-        session_id = uuid.uuid4().hex
-        async with stdio_server() as (read_stream, write_stream):
-            await self._run_scoped(server, read_stream, write_stream, init_options, session_id)
+        with stdio_output(transport=True) as protocol_stdout:
+            logger.info("Starting stdio transport")
+            # [TM-4] stdio has no wire-level session id; synthesize one so async
+            # tasks submitted over this connection are still tracked and cancelled
+            # when the stdio stream closes.
+            session_id = uuid.uuid4().hex
+            async with stdio_server(stdout=anyio.wrap_file(protocol_stdout)) as (read_stream, write_stream):
+                await self._run_scoped(server, read_stream, write_stream, init_options, session_id)
 
     async def run_streamable_http(
         self,

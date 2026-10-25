@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from apcore_mcp.auth.protocol import Authenticator
     from apcore_mcp.server.transport import MetricsExporter
 
+from apcore_mcp._stdio import output_scope
+
 logger = logging.getLogger(__name__)
 
 
@@ -200,29 +202,30 @@ class MCPServer:
     def _run(self) -> None:
         """Internal: run the server event loop on this background thread."""
         try:
-            mcp = self._build_app()
-            run_coro = mcp._build_serve_coro(
-                transport=self._transport,
-                host=self._host,
-                port=self._port,
-                explorer=self._explorer,
-                explorer_prefix=self._explorer_prefix,
-                allow_execute=self._allow_execute,
-                explorer_title=self._explorer_title,
-                explorer_project_name=self._explorer_project_name,
-                explorer_project_url=self._explorer_project_url,
-            )
+            with output_scope(self._transport):
+                mcp = self._build_app()
+                run_coro = mcp._build_serve_coro(
+                    transport=self._transport,
+                    host=self._host,
+                    port=self._port,
+                    explorer=self._explorer,
+                    explorer_prefix=self._explorer_prefix,
+                    allow_execute=self._allow_execute,
+                    explorer_title=self._explorer_title,
+                    explorer_project_name=self._explorer_project_name,
+                    explorer_project_url=self._explorer_project_url,
+                )
 
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-            self._started.set()
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
+                self._started.set()
 
-            try:
-                self._loop.run_until_complete(run_coro())
-            finally:
-                self._loop.close()
-                self._stopped.set()
+                try:
+                    self._loop.run_until_complete(run_coro())
+                finally:
+                    self._loop.close()
         except Exception as exc:
             self._start_error = exc
             self._started.set()  # unblock start() so it can surface the error
+        finally:
             self._stopped.set()

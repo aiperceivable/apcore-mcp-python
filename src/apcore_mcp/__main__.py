@@ -11,6 +11,7 @@ from pathlib import Path
 from apcore.registry import Registry
 
 from apcore_mcp import serve
+from apcore_mcp._stdio import configured_output
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,12 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    with configured_output(args.transport):
+        _run(args, parser)
+
+
+def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Bootstrap and serve inside the selected transport output scope."""
     # Validate port range (argparse only validates type, not range)
     _validate_port(args.port, parser)
 

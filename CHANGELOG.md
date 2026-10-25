@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Fixed
+
+- Reserve protocol stdout for the full stdio lifecycle, including CLI discovery,
+  convenience API construction, startup/shutdown callbacks, and threaded server
+  preparation. Route diagnostic prints, held stdout logging handlers, core trace
+  exporters and event subscribers to stderr while keeping MCP responses on an
+  independent output stream. Restore host output on exit or cancellation and
+  reject competing stdio owners. HTTP/SSE runtime output is unchanged.
+
 ## [0.23.1] - 2026-10-19
 
 ### Fixed — MCP object root validation

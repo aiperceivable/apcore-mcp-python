@@ -323,6 +323,29 @@ mcp.registry    # underlying Registry
 mcp.executor    # underlying Executor
 ```
 
+### Standard output with stdio transport
+
+During stdio startup, execution and shutdown, apcore-mcp reserves stdout for
+MCP messages and sends diagnostic output to stderr. This includes module
+`print()` calls, logging handlers already targeting stdout, and apcore's
+`StdoutExporter` and `StdoutSubscriber`. HTTP/SSE runtime output keeps the host's
+normal policy. Configuration loading is protected before transport selection.
+
+A stdio server owns process stdout for its lifetime; run one per process. The
+scope is restored on normal exit, startup failure and cancellation. The CLI
+protects backend discovery; the convenience `serve()` also protects APCoreMCP
+construction. Work performed before calling these entry points, including
+imports and construction of a separately instantiated `APCoreMCP`, remains the
+caller's responsibility. Keep diagnostics on stderr there too.
+
+With ordinary process streams, fd 1 is redirected and MCP writes through its
+own saved descriptor. When embedding with custom streams that are not bound to stdout fd 1 and a
+distinct stderr descriptor, protection covers Python stdout lookups and
+existing stdout logging handlers. A saved raw stream in that mode, an explicitly duplicated
+protocol descriptor, or a cached native Windows standard handle can bypass the
+scope. Do not write to those endpoints or merge stderr into stdout in a stdio
+launcher. Finish application background work before the server stops.
+
 ### `serve()` (function-based)
 
 ```python

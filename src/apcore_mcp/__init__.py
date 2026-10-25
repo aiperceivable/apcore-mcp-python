@@ -18,6 +18,7 @@ from typing import Any
 
 from starlette.applications import Starlette
 
+from apcore_mcp._stdio import configured_output
 from apcore_mcp.adapters.annotations import AnnotationMapper
 from apcore_mcp.adapters.approval import ElicitationApprovalHandler, StorageBackedApprovalHandler
 from apcore_mcp.adapters.errors import ErrorMapper, internal_error_response
@@ -220,47 +221,48 @@ def serve(
         async_max_concurrent: Max concurrent async tasks.
         async_max_tasks: Max total async tasks tracked.
     """
-    mcp = APCoreMCP(
-        registry_or_executor,
-        name=name,
-        version=version,
-        tags=tags,
-        prefix=prefix,
-        log_level=log_level,
-        validate_inputs=validate_inputs,
-        metrics_collector=metrics_collector,
-        authenticator=authenticator,
-        require_auth=require_auth,
-        exempt_paths=exempt_paths,
-        approval_handler=approval_handler,
-        approval_store=approval_store,
-        approval_notify=approval_notify,
-        output_formatter=output_formatter,
-        output_format=output_format,
-        strategy=strategy,
-        redact_output=redact_output,
-        trace=trace,
-        dynamic=dynamic,
-        middleware=middleware,
-        acl=acl,
-        observability=observability,
-        async_tasks=async_tasks,
-        async_max_concurrent=async_max_concurrent,
-        async_max_tasks=async_max_tasks,
-    )
-    mcp.serve(
-        transport=transport,
-        host=host,
-        port=port,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        explorer=explorer,
-        explorer_prefix=explorer_prefix,
-        allow_execute=allow_execute,
-        explorer_title=explorer_title,
-        explorer_project_name=explorer_project_name,
-        explorer_project_url=explorer_project_url,
-    )
+    with configured_output(transport):
+        mcp = APCoreMCP(
+            registry_or_executor,
+            name=name,
+            version=version,
+            tags=tags,
+            prefix=prefix,
+            log_level=log_level,
+            validate_inputs=validate_inputs,
+            metrics_collector=metrics_collector,
+            authenticator=authenticator,
+            require_auth=require_auth,
+            exempt_paths=exempt_paths,
+            approval_handler=approval_handler,
+            approval_store=approval_store,
+            approval_notify=approval_notify,
+            output_formatter=output_formatter,
+            output_format=output_format,
+            strategy=strategy,
+            redact_output=redact_output,
+            trace=trace,
+            dynamic=dynamic,
+            middleware=middleware,
+            acl=acl,
+            observability=observability,
+            async_tasks=async_tasks,
+            async_max_concurrent=async_max_concurrent,
+            async_max_tasks=async_max_tasks,
+        )
+        mcp.serve(
+            transport=transport,
+            host=host,
+            port=port,
+            on_startup=on_startup,
+            on_shutdown=on_shutdown,
+            explorer=explorer,
+            explorer_prefix=explorer_prefix,
+            allow_execute=allow_execute,
+            explorer_title=explorer_title,
+            explorer_project_name=explorer_project_name,
+            explorer_project_url=explorer_project_url,
+        )
 
 
 def async_serve(
