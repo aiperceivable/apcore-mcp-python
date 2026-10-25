@@ -389,3 +389,68 @@ def test_config_bus_transport_override_selects_output_policy(configured: str) ->
     assert completed.stdout == ("restored\n" if configured == "stdio" else lifecycle + "restored\n")
     if configured == "stdio":
         assert completed.stderr == lifecycle
+
+
+def test_failed_fd_restoration_poison_rejects_future_owner() -> None:
+    completed = run_script("""
+        import os, sys
+        from unittest.mock import patch
+        from apcore_mcp._stdio import stdio_output
+        saved = os.dup(1)
+        original_dup2 = os.dup2
+        calls = []
+        def fail_restore(source, target):
+            calls.append((source, target))
+            if len(calls) == 2:
+                raise OSError('restore failure')
+            return original_dup2(source, target)
+        try:
+            with patch('apcore_mcp._stdio.os.dup2', fail_restore):
+                try:
+                    with stdio_output(): print('diagnostic')
+                except OSError as exc:
+                    assert str(exc) == 'restore failure'
+                else:
+                    raise AssertionError('restoration error was swallowed')
+                try:
+                    with stdio_output(): pass
+                except RuntimeError as exc:
+                    assert 'poisoned' in str(exc)
+                else:
+                    raise AssertionError('stdio reopened on redirected stderr')
+                assert len(calls) == 2, 'poisoned owner changed descriptors'
+        finally:
+            original_dup2(saved, 1)
+            os.close(saved)
+        print('restored externally')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "restored externally\n"
+    assert "diagnostic" in completed.stderr
+
+
+def test_failed_flush_with_successful_fd_restore_allows_next_owner() -> None:
+    completed = run_script("""
+        import sys
+        from unittest.mock import patch
+        from apcore_mcp._stdio import stdio_output
+        original_flush = sys.stdout.flush
+        calls = []
+        def fail_exit_flush():
+            calls.append(None)
+            if len(calls) == 2:
+                raise OSError('flush failure')
+            return original_flush()
+        with patch.object(sys.stdout, 'flush', fail_exit_flush):
+            try:
+                with stdio_output(): pass
+            except OSError as exc:
+                assert str(exc) == 'flush failure'
+            else:
+                raise AssertionError('flush error was swallowed')
+        with stdio_output() as protocol:
+            protocol.write('protocol after flush failure\\n'); protocol.flush()
+        print('restored')
+    """)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "protocol after flush failure\nrestored\n"

@@ -332,8 +332,11 @@ MCP messages and sends diagnostic output to stderr. This includes module
 normal policy. Configuration loading is protected before transport selection.
 
 A stdio server owns process stdout for its lifetime; run one per process. The
-scope is restored on normal exit, startup failure and cancellation. The CLI
-protects backend discovery; the convenience `serve()` also protects APCoreMCP
+scope is restored on normal exit, startup failure and cancellation. If the OS
+rejects descriptor restoration, further stdio ownership fails closed; restart
+the process before serving stdio again.
+
+The CLI protects backend discovery; the convenience `serve()` also protects APCoreMCP
 construction. Work performed before calling these entry points, including
 imports and construction of a separately instantiated `APCoreMCP`, remains the
 caller's responsibility. Keep diagnostics on stderr there too.

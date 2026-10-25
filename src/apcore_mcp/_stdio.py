@@ -22,6 +22,7 @@ class _Owner:
 
 
 _owner: _Owner | None = None
+_poisoned_reason: str | None = None
 _owner_context: ContextVar[_Owner | None] = ContextVar("apcore_mcp_stdio_owner", default=None)
 _owner_lock = threading.Lock()
 _selected_transport: ContextVar[str | None] = ContextVar("apcore_mcp_selected_transport", default=None)
@@ -40,6 +41,7 @@ def configured_transport(transport: str) -> str:
 
 @contextlib.contextmanager
 def _redirect_diagnostics() -> Iterator[TextIO]:
+    global _poisoned_reason
     original_stdout = sys.stdout
     try:
         stdout_fd = original_stdout.fileno()
@@ -65,7 +67,13 @@ def _redirect_diagnostics() -> Iterator[TextIO]:
                     original_stdout.flush()
                     protocol.flush()
                 finally:
-                    os.dup2(protocol_fd, 1)
+                    try:
+                        os.dup2(protocol_fd, 1)
+                    except OSError as exc:
+                        # The process output destination is now unknown. Never
+                        # let another server reserve redirected stderr as MCP.
+                        _poisoned_reason = str(exc)
+                        raise
         return
 
     # Embedders/tests can install non-fd streams. Preserve that stream for MCP
@@ -110,6 +118,8 @@ def stdio_output(*, transport: bool = False) -> Iterator[TextIO]:
     if not _owner_lock.acquire(blocking=False):
         raise RuntimeError("MCP stdio is already owned by another execution context")
     try:
+        if _poisoned_reason is not None:
+            raise RuntimeError(f"MCP stdio ownership is poisoned after stdout restoration failed: {_poisoned_reason}")
         with _redirect_diagnostics() as protocol:
             current = _Owner(threading.get_ident(), protocol, transport)
             _owner = current
