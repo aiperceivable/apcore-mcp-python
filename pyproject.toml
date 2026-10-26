@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apcore-mcp"
-version = "0.23.2"
+version = "0.23.3"
 description = "Automatic MCP Server & OpenAI Tools Bridge for apcore"
 readme = "README.md"
 license = "Apache-2.0"
@@ -41,7 +41,7 @@ dependencies = [
 # a runtime dependency — this is the extra the "install 'apcore-mcp[markdown]'"
 # WARN logs point at.
 markdown = [
-    "apcore-toolkit>=0.14.0",
+    "apcore-toolkit>=0.14.1",
 ]
 
 # The OpenAPI backend. `[http-proxy]` resolves httpx, which both `load_spec`
@@ -51,7 +51,7 @@ markdown = [
 # entry point raises with an actionable install message instead of returning
 # None.
 openapi = [
-    "apcore-toolkit[http-proxy]>=0.14.0",
+    "apcore-toolkit[http-proxy]>=0.14.1",
 ]
 
 dev = [
@@ -61,7 +61,7 @@ dev = [
     "mypy>=1.0",
     "ruff>=0.1",
     "apdev[dev]>=0.2.3",
-    "apcore-toolkit[http-proxy]>=0.14.0",
+    "apcore-toolkit[http-proxy]>=0.14.1",
 ]
 
 [project.scripts]

@@ -51,7 +51,7 @@ For full documentation, including Quick Start guides for both Python and TypeScr
 
 Install apcore-mcp alongside your existing apcore project:
 
-Requires Python 3.11+ and apcore >= 0.32.0. The `markdown` and `openapi` extras require apcore-toolkit >= 0.14.0.
+Requires Python 3.11+ and apcore >= 0.32.2. The `markdown` and `openapi` extras require apcore-toolkit >= 0.14.1.
 
 ```bash
 pip install apcore-mcp
