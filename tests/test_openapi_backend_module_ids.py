@@ -30,7 +30,10 @@ _DOC: dict[str, Any] = {
     "servers": [{"url": "https://api.example.com"}],
     "paths": {
         "/pets": {"get": {"operationId": "listPets", **_OK}},
-        "/pets/{petId}": {"get": _OK},
+        "/pets/{petId}": {
+            "parameters": [{"name": "petId", "in": "path", "required": True, "schema": {"type": "string"}}],
+            "get": _OK,
+        },
     },
 }
 

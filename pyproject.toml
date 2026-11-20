@@ -51,7 +51,7 @@ markdown = [
 # entry point raises with an actionable install message instead of returning
 # None.
 openapi = [
-    "apcore-toolkit[http-proxy]>=0.14.1",
+    "apcore-toolkit[http-proxy]>=0.15.0",
 ]
 
 dev = [
@@ -61,7 +61,7 @@ dev = [
     "mypy>=1.0",
     "ruff>=0.1",
     "apdev[dev]>=0.2.3",
-    "apcore-toolkit[http-proxy]>=0.14.1",
+    "apcore-toolkit[http-proxy]>=0.15.0",
 ]
 
 [project.scripts]

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.23.4] - 2026-11-20
+
+### Changed
+
+- The standalone OpenAPI backend resolves inherited and referenced parameters through apcore-toolkit 0.15.0,
+  and refuses selected operations with forwarding hazards before adding any module to the registry.
+
 ## [0.23.2] - 2026-10-25
 
 ### Fixed

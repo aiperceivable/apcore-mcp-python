@@ -169,8 +169,13 @@ def _require_toolkit() -> Any:
         import apcore_toolkit
     except ImportError as exc:  # pragma: no cover - exercised by a dedicated test
         raise RuntimeError(
-            "The OpenAPI backend requires apcore-toolkit. Install it with: " "pip install 'apcore-mcp[openapi]'"
+            "The OpenAPI backend requires apcore-toolkit. Install it with: pip install 'apcore-mcp[openapi]'"
         ) from exc
+    if not hasattr(apcore_toolkit, "validate_effective_proxy_modules"):
+        raise RuntimeError(
+            "The OpenAPI backend requires apcore-toolkit >= 0.15.0. "
+            "Upgrade it with: pip install --upgrade 'apcore-mcp[openapi]'"
+        )
     return apcore_toolkit
 
 
@@ -220,7 +225,7 @@ def openapi_backend(
     # normalises every module ID into apcore's Canonical ID alphabet itself —
     # after base_path_prefix and both ID-affecting hooks, and before its own
     # deduplicate_ids — so the bridge applies no projection of its own.
-    scanned = toolkit.OpenAPIScanner().scan(
+    scanned = toolkit.OpenAPIScanner().scan_with_effective_parameters(
         document,
         include=include,
         exclude=exclude,
@@ -284,6 +289,8 @@ def openapi_backend(
         )
 
     # --- 6. Write -----------------------------------------------------------
+    toolkit.validate_effective_proxy_modules(modules)
+
     writer = toolkit.HTTPProxyRegistryWriter(
         base_url=effective_base_url,
         auth_header_factory=auth_header_factory,
